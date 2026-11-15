@@ -1,5 +1,5 @@
 /* Slekni service worker: web-push display + offline shell */
-const CACHE = 'slekni-v4-12';
+const CACHE = 'slekni-v4-13';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png?v=3', '/icons/icon-512.png?v=3'];
 
 self.addEventListener('install', (event) => {

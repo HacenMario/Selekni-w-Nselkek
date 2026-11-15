@@ -1,6 +1,6 @@
 {
   "name": "slekni-api-server",
-  "version": "4.12.0",
+  "version": "4.13.0",
   "private": true,
   "description": "Slekni API server - Express + Mongoose (MongoDB), deployable to Railway",
   "scripts": {

@@ -12,6 +12,10 @@ async function main() {
   const app = createApp();
   const server = app.listen(env.port, () => {
     console.log(`[slekni] API ready on port ${env.port}`);
+    // v4.13 — surface social-login misconfigurations early in the deploy logs
+    if (env.google.clientId && env.appUrl.startsWith('http://localhost')) {
+      console.warn('[slekni] WARNING: GOOGLE_CLIENT_ID is set but APP_URL is still localhost — the Google callback would redirect users to localhost. Set APP_URL to the frontend origin (e.g. https://<app>.vercel.app).');
+    }
   });
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
