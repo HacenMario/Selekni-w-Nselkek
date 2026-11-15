@@ -4,33 +4,18 @@ import { useQuery } from '@tanstack/react-query';
 import { useApp } from '@/store/app';
 import { useLang } from '@/lib/language-context';
 import { api, imageUrl } from '@/lib/api';
-import { Offer, Settings, Subscription } from '@/lib/types';
+import { Offer } from '@/lib/types';
 import { AmountPill, EmptyState, StatusBadge, timeAgo } from '@/components/app/ui-bits';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Plus, Inbox, LoaderCircle, ShieldCheck } from 'lucide-react';
-import { toast } from 'sonner';
+import { Plus, Inbox } from 'lucide-react';
 import { UserAvatar } from '@/components/app/UserAvatar';
 
+/** Owner's offers — v4.14: no subscription gate, posting is open to everyone
+ *  (the platform earns a commission on completed tasks instead). */
 export function MyOffersScreen({ onCreate }: { onCreate: () => void }) {
   const { t } = useLang();
-  const user = useApp((s) => s.user);
   const openOfferDetail = useApp((s) => s.openOfferDetail);
-  const setTab = useApp((s) => s.setTab);
-
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: () => api.get<Settings>('/settings'),
-    staleTime: 60_000,
-  });
-
-  const { data: subData } = useQuery({
-    queryKey: ['my-subscription'],
-    queryFn: () => api.get<{ current: Subscription | null; subscription: Settings['subscription'] }>('/subscriptions/mine'),
-    enabled: user?.role === 'owner' && !!settings?.subscription.isEnabled,
-    // keeps an admin grant/activation visible within seconds — no stale 'expired' banner
-    refetchInterval: 30_000,
-  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-offers'],
@@ -38,41 +23,8 @@ export function MyOffersScreen({ onCreate }: { onCreate: () => void }) {
     refetchInterval: 20_000,
   });
 
-  const sub = subData?.current;
-  const subOk = !settings?.subscription.isEnabled || sub?.status === 'active';
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* subscription status strip */}
-      {settings?.subscription.isEnabled && user?.role === 'owner' && (
-        <div className="px-4 pt-3">
-          {sub?.status === 'active' ? (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/50 px-3.5 py-2.5 text-sm">
-              <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span className="text-emerald-800 dark:text-emerald-300 font-semibold">
-                {t('subscriptionActiveUntil')}{' '}
-                {sub.endsAt ? new Date(sub.endsAt).toLocaleDateString() : ''}
-              </span>
-              <button onClick={() => setTab('subscription')} className="ms-auto text-xs font-bold text-emerald-700 dark:text-emerald-300 underline underline-offset-2">
-                {t('renew')}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setTab('subscription')}
-              className="w-full flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/50 px-3.5 py-2.5 text-sm text-start active:scale-[0.99] transition-transform"
-            >
-              <span className="text-amber-800 dark:text-amber-300 font-semibold flex-1">
-                {sub?.status === 'pending' ? t('subscriptionPending') : sub?.status === 'rejected' ? t('subscriptionRejected') : sub?.status === 'expired' ? t('subscriptionExpired') : t('subscriptionRequired')}
-              </span>
-              <span className="text-xs font-bold text-amber-700 dark:text-amber-300 underline underline-offset-2 shrink-0">
-                {t('subscription')}
-              </span>
-            </button>
-          )}
-        </div>
-      )}
-
       <div className="flex-1 overflow-y-auto px-4 pb-28 pt-3 space-y-3">
         {isLoading ? (
           [...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)
@@ -118,14 +70,7 @@ export function MyOffersScreen({ onCreate }: { onCreate: () => void }) {
       {/* FAB */}
       <div className="absolute bottom-20 end-4 z-40">
         <Button
-          onClick={() => {
-            if (!subOk) {
-              toast.info(t('subscriptionRequired'));
-              setTab('subscription');
-              return;
-            }
-            onCreate();
-          }}
+          onClick={onCreate}
           size="lg"
           className="h-14 rounded-2xl px-5 text-base font-bold shadow-xl shadow-primary/30 hover:shadow-primary/40 transition-all"
         >

@@ -6,14 +6,14 @@ import { useApp } from '@/store/app';
 import { useLang, LANGS } from '@/lib/language-context';
 import { useTheme } from 'next-themes';
 import { api, setToken } from '@/lib/api';
-import { Settings, Stats, Subscription, User, BLOOD_TYPES, BloodType } from '@/lib/types';
+import { Settings, Stats, MyDues, User, BLOOD_TYPES, BloodType } from '@/lib/types';
 import { Flag } from '@/components/app/flags';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { SubscriptionScreen } from '@/components/app/screens/SubscriptionScreen';
+import { DuesScreen } from '@/components/app/screens/DuesScreen';
 import { WilayaSelect } from '@/components/app/WilayaSelect';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { PwaSetupCard } from '@/components/app/PwaSetupCard';
@@ -27,7 +27,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
-  BadgeCheck, ChevronLeft, Coins, FileText, Handshake, IdCard, LogOut, Moon, ShieldCheck,
+  BadgeCheck, ChevronLeft, Coins, FileText, HandCoins, Handshake, IdCard, LogOut, Moon, ShieldCheck,
   Sparkles, Sun, TrendingUp, TriangleAlert, UserRound, Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -59,11 +59,12 @@ export function ProfileScreen() {
     staleTime: 60_000,
   });
 
-  const { data: subData } = useQuery({
-    queryKey: ['my-subscription'],
-    queryFn: () => api.get<{ current: Subscription | null; subscription: Settings['subscription'] }>('/subscriptions/mine'),
-    refetchInterval: 30_000, // no stale 'expired' state after an admin grant/activation
-    enabled: user?.role === 'owner',
+  // v4.14 — commission dues summary (replaces the subscription query), all roles
+  const { data: duesData } = useQuery({
+    queryKey: ['my-dues'],
+    queryFn: () => api.get<MyDues>('/dues/mine'),
+    refetchInterval: 30_000,
+    enabled: !!user,
   });
 
   const { data: stats } = useQuery({
@@ -241,22 +242,18 @@ export function ProfileScreen() {
 
       {/* v4.9 — "contact us" moved to its own bottom-nav tab */}
 
-      {/* owner subscription shortcut */}
-      {user.role === 'owner' && settings?.subscription.isEnabled && (
-        <SectionCard icon={ShieldCheck} title={t('subscription')} action={
-          <Button variant="ghost" size="sm" onClick={() => setShowSub(true)} className="text-primary font-bold">
-            {subData?.current?.status === 'active' ? t('renew') : t('details')}
-          </Button>
-        }>
-          <p className="text-sm text-muted-foreground break-words">
-            {subData?.current?.status === 'active'
-              ? `${t('subscriptionActive')} — ${t('subscriptionActiveUntil')} ${subData.current.endsAt ? new Date(subData.current.endsAt).toLocaleDateString() : ''}`
-              : subData?.current?.status === 'pending'
-                ? t('subscriptionPending')
-                : t('subscriptionRequired')}
-          </p>
-        </SectionCard>
-      )}
+      {/* v4.14 — commission dues shortcut (replaces the owner subscription shortcut), all roles */}
+      <SectionCard icon={HandCoins} title={t('duesTitle')} action={
+        <Button variant="ghost" size="sm" onClick={() => setShowSub(true)} className="text-primary font-bold">
+          {t('details')}
+        </Button>
+      }>
+        <p className="text-sm text-muted-foreground break-words">
+          {(duesData?.totals.unpaidDA || 0) > 0
+            ? `${t('duesUnpaid')}: ${(duesData?.totals.unpaidDA || 0).toLocaleString('fr-DZ')} DA`
+            : t('duesAllPaidTitle')}
+        </p>
+      </SectionCard>
 
       {/* languages */}
       <SectionCard icon={UserRound} title={t('languages')}>
@@ -405,9 +402,9 @@ export function ProfileScreen() {
             <button onClick={() => setShowSub(false)} aria-label={t('back')} className="h-10 w-10 rounded-xl border bg-card flex items-center justify-center hover:bg-muted active:scale-90 transition-all">
               <ChevronLeft className="h-5 w-5 rtl:rotate-180" />
             </button>
-            <h2 className="font-bold">{t('subscription')}</h2>
+            <h2 className="font-bold">{t('duesTitle')}</h2>
           </div>
-          <SubscriptionScreen />
+          <DuesScreen />
         </div>
       )}
     </div>

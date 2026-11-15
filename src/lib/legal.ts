@@ -76,7 +76,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
       {
         h: '7. حقوقك',
         p: [
-          'يمكنك تعديل معلوماتك في أي وقت من صفحة «حسابي». ويمكنك طلب حذف حسابك نهائياً مع كل بياناته (العروض، الاشتراكات، الإشعارات) عبر صفحة «اتصل بنا».',
+          'يمكنك تعديل معلوماتك في أي وقت من صفحة «حسابي». ويمكنك طلب حذف حسابك نهائياً مع كل بياناته (العروض، المهام المنجزة، المستحقات، الإشعارات) عبر صفحة «اتصل بنا».',
           'بعد حذف الحساب تُمحى بياناته من المنصة، باستثناء ما يلزم القانون الاحتفاظ به.',
         ],
       },
@@ -141,7 +141,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
       {
         h: '7. Vos droits',
         p: [
-          "Vous pouvez modifier vos informations à tout moment depuis la page « Mon compte », et demander la suppression définitive de votre compte avec toutes ses données (offres, abonnements, notifications) via la page « Contactez-nous ».",
+          "Vous pouvez modifier vos informations à tout moment depuis la page « Mon compte », et demander la suppression définitive de votre compte avec toutes ses données (offres, tâches accomplies, commissions dues, notifications) via la page « Contactez-nous ».",
           "Après suppression du compte, ses données sont effacées de la plateforme, hors ce que la loi impose de conserver.",
         ],
       },
@@ -206,7 +206,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
       {
         h: '7. Your rights',
         p: [
-          'You can edit your information at any time from the "My account" page, and request the permanent deletion of your account with all its data (offers, subscriptions, notifications) through the "Contact us" page.',
+          'You can edit your information at any time from the "My account" page, and request the permanent deletion of your account with all its data (offers, completed tasks, commission dues, notifications) through the "Contact us" page.',
           'After account deletion its data is erased from the platform, except what the law requires to be kept.',
         ],
       },

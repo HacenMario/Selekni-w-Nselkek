@@ -4,15 +4,13 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp, AdminTab } from '@/store/app';
 import { useLang } from '@/lib/language-context';
-import { api, idCardUrl, packageImageUrl, subProofUrl } from '@/lib/api';
+import { api, idCardUrl } from '@/lib/api';
 import { badgeDelta, getClicked, markClicked, markTabSeen } from '@/lib/admin-badges';
-import { AdminDashboard, AdminStats, Complaint, ExpiringSub, Offer, Paged, PublicUser, Settings, SubPackage, Subscription, User } from '@/lib/types';
-import { compressImage } from '@/lib/image';
+import { AdminDashboard, AdminDuesRow, AdminDuesSummary, AdminStats, Complaint, DuesMonth, MyDues, Offer, Paged, PublicUser, Settings, User } from '@/lib/types';
 import { AmountPill, Pager, StatusBadge, timeAgo } from '@/components/app/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,9 +19,9 @@ import { wilayaLabel } from '@/lib/wilayas';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
-  BadgeCheck, Ban, BarChart3, Check, ClipboardList, Coins, Crown, Droplets, Gavel, Gift, Handshake, Hourglass, IdCard, ImagePlus, LoaderCircle,
-  LayoutDashboard, Layers3, Lock, LockOpen, MapPin, Megaphone, Pencil, Phone, Plus, Send, Settings2,
-  TrendingUp, Trash2, Users, UsersRound, Wallet, Wrench, X, CalendarClock,
+  BadgeCheck, Ban, BarChart3, Check, ClipboardList, Coins, Crown, Droplets, Gavel, HandCoins, Handshake, Hourglass, IdCard, LoaderCircle,
+  LayoutDashboard, MapPin, Megaphone, Pencil, Phone, Send, Settings2,
+  TrendingUp, Trash2, Users, UsersRound, Wallet, Wrench, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -31,7 +29,6 @@ export function AdminScreen() {
   const { t } = useLang();
   const adminTab = useApp((s) => s.adminTab);
   const setAdminTab = useApp((s) => s.setAdminTab);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('slekni.token') || '' : '';
 
   // live pending counts that drive the numeric tab badges
   const { data: badgeData } = useQuery({
@@ -40,7 +37,8 @@ export function AdminScreen() {
     refetchInterval: 20_000,
   });
   const counts: Record<string, number> = {
-    subs: badgeData?.subscriptions.pending || 0,
+    // v4.14 — the dues tab badge counts executors with UNPAID dues
+    dues: badgeData?.dues.unpaidUsers || 0,
     complaints: badgeData?.complaintsOpen || 0,
     users: badgeData?.users.idPending || 0,
     offers: badgeData?.offers.open || 0,
@@ -60,7 +58,7 @@ export function AdminScreen() {
         <div className="px-3 pt-3">
           <TabsList className="flex flex-wrap justify-center gap-1 h-auto rounded-xl bg-muted/70 p-1.5 w-full">
             <TabsTrigger value="dashboard" className="rounded-lg gap-1.5 px-2.5 h-9 data-[state=active]:bg-background data-[state=active]:shadow-sm"><LayoutDashboard className="h-4 w-4 shrink-0" /><span className="text-xs font-bold">{t('dashboard')}</span></TabsTrigger>
-            <TabsTrigger value="subs" className="rounded-lg gap-1.5 px-2.5 h-9 data-[state=active]:bg-background data-[state=active]:shadow-sm"><Wallet className="h-4 w-4 shrink-0" /><span className="text-xs font-bold">{t('manageSubscriptions')}</span><TabBadge count={badgeDelta('subs', counts.subs)} /></TabsTrigger>
+            <TabsTrigger value="dues" className="rounded-lg gap-1.5 px-2.5 h-9 data-[state=active]:bg-background data-[state=active]:shadow-sm"><HandCoins className="h-4 w-4 shrink-0" /><span className="text-xs font-bold">{t('duesAdminTab')}</span><TabBadge count={badgeDelta('dues', counts.dues)} /></TabsTrigger>
             <TabsTrigger value="complaints" className="rounded-lg gap-1.5 px-2.5 h-9 data-[state=active]:bg-background data-[state=active]:shadow-sm"><Gavel className="h-4 w-4 shrink-0" /><span className="text-xs font-bold">{t('complaintsLabel')}</span><TabBadge count={badgeDelta('complaints', counts.complaints)} /></TabsTrigger>
             <TabsTrigger value="users" className="rounded-lg gap-1.5 px-2.5 h-9 data-[state=active]:bg-background data-[state=active]:shadow-sm"><UsersRound className="h-4 w-4 shrink-0" /><span className="text-xs font-bold">{t('users')}</span><TabBadge count={badgeDelta('users', counts.users)} /></TabsTrigger>
             <TabsTrigger value="offers" className="rounded-lg gap-1.5 px-2.5 h-9 data-[state=active]:bg-background data-[state=active]:shadow-sm"><ClipboardList className="h-4 w-4 shrink-0" /><span className="text-xs font-bold">{t('offers')}</span><TabBadge count={badgeDelta('offers', counts.offers)} /></TabsTrigger>
@@ -72,8 +70,8 @@ export function AdminScreen() {
         <TabsContent value="dashboard" className="flex-1 overflow-y-auto px-4 pb-28 pt-4 mt-0">
           <DashboardTab />
         </TabsContent>
-        <TabsContent value="subs" className="flex-1 overflow-y-auto px-4 pb-28 pt-4 mt-0">
-          <SubsTab token={token} />
+        <TabsContent value="dues" className="flex-1 overflow-y-auto px-4 pb-28 pt-4 mt-0">
+          <DuesTab />
         </TabsContent>
         <TabsContent value="complaints" className="flex-1 overflow-y-auto px-4 pb-28 pt-4 mt-0">
           <ComplaintsTab />
@@ -118,15 +116,16 @@ function DashboardTab() {
 
   return (
     <div className="space-y-5">
-      {/* 12 overview KPI cards (v4.6 — accounts, subscriptions, moderation, offers funnel) */}
+      {/* overview KPI cards (v4.14 — accounts, commission dues, moderation, offers funnel) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kpi icon={Users} label={t('totalUsers')} value={data.users.total} />
         <Kpi icon={Handshake} label={t('owners')} value={data.users.owners} />
         <Kpi icon={Wrench} label={t('seekers')} value={data.users.seekers} />
         <Kpi icon={BadgeCheck} label={t('verifiedKpi')} value={data.users.verified ?? 0} />
         <Kpi icon={Ban} label={t('bannedKpi')} value={data.users.banned ?? 0} />
-        <Kpi icon={Wallet} label={t('subsActiveKpi')} value={data.subscriptions.active} />
-        <Kpi icon={Hourglass} label={t('pendingSubs')} value={data.subscriptions.pending} highlight={data.subscriptions.pending > 0} />
+        {/* v4.14 — commission dues replace the subscription KPIs */}
+        <Kpi icon={HandCoins} label={t('duesUnpaidKpi')} value={`${(data.dues.unpaidDA || 0).toLocaleString('fr-DZ')}`} highlight={(data.dues.unpaidDA || 0) > 0} />
+        <Kpi icon={Hourglass} label={t('duesUnpaidUsersKpi')} value={data.dues.unpaidUsers || 0} highlight={(data.dues.unpaidUsers || 0) > 0} />
         <Kpi icon={Gavel} label={t('complaintsOpenCount')} value={data.complaintsOpen} highlight={data.complaintsOpen > 0} />
       </div>
 
@@ -137,17 +136,17 @@ function DashboardTab() {
         <Kpi icon={BadgeCheck} label={t('statusDone')} value={data.offers.done} />
       </div>
 
-      {/* subscriptions needing renewal so the admin can contact owners */}
-      {data.expiringSubs?.length > 0 && (
-        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
-          <h3 className="font-bold text-sm flex items-center gap-2 text-amber-700 dark:text-amber-300">
-            <CalendarClock className="h-4 w-4" /> {t('expiringSubs')} ({data.expiringSubs.length})
-          </h3>
-          {data.expiringSubs.map((s) => (
-            <ExpiringRow key={s._id} sub={s} />
-          ))}
+      {/* v4.14 — this month's commission expectation, so the admin knows what to collect */}
+      <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+        <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <HandCoins className="h-5 w-5" />
         </div>
-      )}
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground font-semibold break-words">{t('duesMonthKpi')}</p>
+          <p className="text-lg font-extrabold break-words" dir="ltr">{(data.dues.monthCommissionsDA || 0).toLocaleString('fr-DZ')} DA</p>
+        </div>
+        <Badge variant="outline" className="shrink-0">{t('duesRateBadge', { rate: data.dues.rate ?? 15 })}</Badge>
+      </div>
 
       <div className="rounded-2xl border bg-card p-4">
         <h3 className="font-bold text-sm mb-3">{t('seeAll')} — {t('users')}</h3>
@@ -167,32 +166,6 @@ function DashboardTab() {
 
       {/* smart statistics + charts (v4) */}
       <AnalyticsSection />
-    </div>
-  );
-}
-
-function ExpiringRow({ sub }: { sub: ExpiringSub }) {
-  const { t } = useLang();
-  const u = typeof sub.user === 'object' ? sub.user : null;
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-card p-2.5">
-      <UserAvatar user={u as PublicUser} size="h-11 w-11" textClass="text-sm" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold break-words leading-tight">{u?.name || '—'}</p>
-        <p className="text-xs text-muted-foreground break-all">{u?.phone || u?.email || ''}</p>
-      </div>
-      <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-300 shrink-0">
-        {sub.daysLeft === 0 ? t('dayLeftOne') : t('daysLeft', { count: sub.daysLeft })}
-      </Badge>
-      {u?.phone && (
-        <a
-          href={`tel:${u.phone}`}
-          aria-label={t('contactAccount')}
-          className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 active:scale-90 transition-all shrink-0"
-        >
-          <Phone className="h-4 w-4" />
-        </a>
-      )}
     </div>
   );
 }
@@ -588,8 +561,8 @@ function UsersTab() {
                 <DetailRow label={t('interestsTitle')} value={(detailUser.interests || []).join(' · ') || '—'} />
               </div>
 
-              {/* subscription management for this account (v4) */}
-              {!detailUser.isSuperAdmin && <UserSubPanel userId={detailUser._id} />}
+              {/* commission dues for this account (v4.14) */}
+              {!detailUser.isSuperAdmin && <UserDuesPanel userId={detailUser._id} />}
 
               <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" onClick={() => { setEditUser(detailUser); setDetailUser(null); }} className="rounded-xl h-10 font-bold">
@@ -872,251 +845,400 @@ function OffersTab() {
   );
 }
 
-/* ---------- Subscriptions (v4: full details + full control) ---------- */
-const SUB_STATUSES = ['', 'pending', 'active', 'expired', 'rejected'] as const;
+/* ---------- Dues (v4.14: commission model — monthly settlements per executor) ---------- */
 
-function subDaysLeft(s: Subscription): number | null {
-  if (!s.endsAt) return null;
-  return Math.max(0, Math.ceil((new Date(s.endsAt).getTime() - Date.now()) / 86400000));
+/** Localized month label for a 'YYYY-MM' bucket. */
+function monthLabel(month: string, lang: string): string {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, (m || 1) - 1, 1));
+  try {
+    return d.toLocaleDateString(lang === 'ar' ? 'ar-DZ' : lang === 'fr' ? 'fr-FR' : lang === 'tr' ? 'tr-TR' : lang === 'es' ? 'es-ES' : lang === 'it' ? 'it-IT' : lang === 'de' ? 'de-DE' : lang === 'ru' ? 'ru-RU' : lang === 'zh' ? 'zh-CN' : 'en-GB', { month: 'long', year: 'numeric' });
+  } catch {
+    return month;
+  }
 }
 
-function SubsTab({ token }: { token: string }) {
+const da = (n: number) => `${(n || 0).toLocaleString('fr-DZ')} DA`;
+
+function DuesTab() {
   const { t, lang } = useLang();
   const qc = useQueryClient();
-  const adminSubsFilter = useApp((s) => s.adminSubsFilter);
-  const setAdminSubsFilter = useApp((s) => s.setAdminSubsFilter);
-  const [busy, setBusy] = useState(false);
-  const status = adminSubsFilter;
-  const [page, setPage] = useState(1);
-  const [proof, setProof] = useState<string | null>(null);
-  const [extendSub, setExtendSub] = useState<Subscription | null>(null);
-  const [extendDays, setExtendDays] = useState('7');
+  const [month, setMonth] = useState('');
   // cards the administration has already clicked — their bounce stops for good
-  const [clickedIds, setClickedIds] = useState<string[]>(() => getClicked('subs'));
+  const [clickedIds, setClickedIds] = useState<string[]>(() => getClicked('dues'));
+  const [settleUser, setSettleUser] = useState<AdminDuesRow | null>(null);
+  const [detailUser, setDetailUser] = useState<AdminDuesRow | null>(null);
+  const [busy, setBusy] = useState(false);
 
   function viewCard(id: string) {
     if (!clickedIds.includes(id)) {
-      markClicked('subs', id);
-      setClickedIds(getClicked('subs'));
+      markClicked('dues', id);
+      setClickedIds(getClicked('dues'));
     }
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-subs', status, page],
-    // 5 cards per page — comfortable spacing for detailed review
-    queryFn: () => api.get<Paged<Subscription>>('/admin/subscriptions', { status: status || undefined, page, limit: 5 }),
-    refetchInterval: 25_000,
+    queryKey: ['admin-dues', month],
+    queryFn: () => api.get<AdminDuesSummary>('/dues/admin/summary', { month: month || undefined }),
+    refetchInterval: 30_000,
   });
 
-  async function decide(id: string, action: 'approve' | 'reject') {
-    setBusy(true);
-    try {
-      await api.post(`/admin/subscriptions/${id}/decide`, { action });
-      toast.success(t('done'));
-      qc.invalidateQueries({ queryKey: ['admin-subs'] });
-      qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
-    } catch {
-      toast.error(t('error'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function act(fn: () => Promise<unknown>, okMsg = 'done') {
-    setBusy(true);
-    try {
-      await fn();
-      toast.success(t(okMsg));
-      qc.invalidateQueries({ queryKey: ['admin-subs'] });
-      qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
-    } catch {
-      toast.error(t('error'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const pkgLabel = (s: Subscription) => {
-    if (s.packageName) return s.packageName[lang] || s.packageName.en;
-    return s.packageKey || t('legacyPlan');
-  };
-
   const items = data?.items || [];
+  const totals = data?.totals;
+
+  async function remind(row: AdminDuesRow) {
+    setBusy(true);
+    try {
+      const res = await api.post<{ unpaidDA: number }>('/dues/admin/remind', { userId: row.user._id, ...(month ? { month } : {}) });
+      toast.success(t('duesRemindSent') + ` (${res.unpaidDA.toLocaleString('fr-DZ')} DA)`);
+    } catch (e) {
+      toast.error((e as { code?: string }).code === 'NOTHING_UNPAID' ? t('duesNothingUnpaid') : t('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
-      {/* status filter — real buttons, desktop-safe */}
+      <p className="text-xs text-muted-foreground leading-relaxed break-words">{t('duesAdminHint', { rate: String(data?.rate ?? 15) })}</p>
+
+      {/* month picker — '' aggregates everything */}
       <div className="flex gap-2 flex-wrap">
-        {SUB_STATUSES.map((s) => (
-          <button key={s || 'all'} onClick={() => { setAdminSubsFilter(s); setPage(1); }} className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all active:scale-95 ${status === s ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}>
-            {s === '' ? t('allCategories') : t(s === 'pending' ? 'pendingSubs' : s === 'active' ? 'subActiveBadge' : s === 'expired' ? 'subscriptionExpired' : 'subRejectedBadge')}
+        <button onClick={() => setMonth('')} className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all active:scale-95 ${month === '' ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}>
+          {t('duesAllMonths')}
+        </button>
+        {(data?.months || []).map((m) => (
+          <button key={m.month} onClick={() => setMonth(m.month)} className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all active:scale-95 ${month === m.month ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}>
+            {monthLabel(m.month, lang)} <span className="opacity-70">· {m.tasks}</span>
           </button>
         ))}
       </div>
 
+      {/* totals strip */}
+      {totals && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <Kpi icon={ClipboardList} label={t('duesTasksCount')} value={totals.tasks} />
+          <Kpi icon={Wallet} label={t('duesDuesTotal')} value={`${(totals.duesDA || 0).toLocaleString('fr-DZ')}`} />
+          <Kpi icon={HandCoins} label={t('duesUnpaid')} value={`${totals.unpaidDA.toLocaleString('fr-DZ')}`} highlight={totals.unpaidDA > 0} />
+        </div>
+      )}
+
       {isLoading ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-10">{t('noPendingSubs')}</p>
+        <p className="text-sm text-muted-foreground text-center py-10">{t('duesNoUsers')}</p>
       ) : (
-        items.map((s) => {
-          const u = typeof s.user === 'object' ? s.user : null;
-          const daysLeft = subDaysLeft(s);
-          const isPending = s.status === 'pending';
-          const isActive = s.status === 'active';
-          return (
-            <div
-              key={s._id}
-              onClick={() => viewCard(s._id)}
-              className={`rounded-2xl border bg-card p-4 space-y-3 card-hover cursor-pointer ${isPending ? 'border-2 border-primary/40' : ''} ${isPending && !clickedIds.includes(s._id) ? 'animate-bounce-new' : ''}`}
-            >
-              {/* user header */}
-              <div className="flex items-center gap-3">
-                <UserAvatar user={u as PublicUser} size="h-12 w-12" textClass="text-base" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-sm break-words leading-tight">{u?.name || '—'}</p>
-                  <p className="text-xs text-muted-foreground break-all">{u?.email}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <SubStatusBadge status={s.status} t={t} />
-                  {u?.role && (
-                    <Badge variant="outline" className="text-[10px] shrink-0">
-                      {u.isSuperAdmin ? t('roleAdmin') : u.role === 'owner' ? t('roleOwner') : t('roleSeeker')}
-                    </Badge>
-                  )}
-                </div>
+        items.map((row) => (
+          <div
+            key={row.user._id}
+            onClick={() => viewCard(row.user._id)}
+            className={`rounded-2xl border bg-card p-4 space-y-3 card-hover ${row.unpaidDA > 0 ? 'border-2 border-amber-400' : ''} ${row.unpaidDA > 0 && !clickedIds.includes(row.user._id) ? 'animate-bounce-new' : ''}`}
+          >
+            {/* user header */}
+            <div className="flex items-center gap-3">
+              <UserAvatar user={row.user as PublicUser} size="h-12 w-12" textClass="text-base" />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-sm break-words leading-tight">{row.user.name}</p>
+                <p className="text-xs text-muted-foreground break-all">{row.user.phone || row.user.email}</p>
               </div>
-
-              {/* full subscription details */}
-              <div className="rounded-xl bg-muted/50 p-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
-                <DetailChip label={t('subPackageType')} value={pkgLabel(s)} />
-                <DetailChip label={t('subscriptionPrice')} value={`${s.amountDA.toLocaleString('fr-DZ')} ${t('da')}`} />
-                <DetailChip label={t('subscriptionDuration')} value={`${s.durationDays ?? '—'} ${t('days')}`} />
-                <DetailChip label={t('maxActiveOffers')} value={String(s.maxActiveOffers ?? '—')} />
-                <div className="col-span-2 break-words"><b className="text-xs text-muted-foreground">{t('reference')}:</b> <span className="text-sm font-semibold" dir="ltr">{s.reference}</span></div>
-                {s.startsAt && <DetailChip label={t('subStarted')} value={new Date(s.startsAt).toLocaleDateString()} />}
-                {s.endsAt && <DetailChip label={t('subscriptionActiveUntil')} value={new Date(s.endsAt).toLocaleDateString()} />}
-                {daysLeft !== null && (
-                  <div className="col-span-2">
-                    <Badge variant="outline" className={`text-[11px] ${isActive && daysLeft <= 5 ? 'border-amber-400 text-amber-700 dark:text-amber-300' : ''}`}>
-                      {isActive ? (daysLeft === 0 ? t('dayLeftOne') : t('daysLeft', { count: daysLeft })) : `—`}
-                    </Badge>
-                  </div>
-                )}
-                <div className="col-span-2 text-[11px] text-muted-foreground">{t('requested')} {timeAgo(s.createdAt, t)}</div>
-              </div>
-
-              {/* payment proof */}
-              {s.proofImage && (
-                <button onClick={() => setProof(subProofUrl(s._id, s.proofImage!._id, token))} className="relative w-full text-start">
-                  <img src={subProofUrl(s._id, s.proofImage._id, token)} alt={t('proof')} className="max-h-40 rounded-xl border w-full object-cover" />
-                  <span className="absolute bottom-2 end-2 rounded-lg bg-black/60 text-white text-[11px] font-bold px-2 py-1">{t('viewFull')}</span>
-                </button>
-              )}
-
-              {/* actions */}
-              <div className="grid grid-cols-2 gap-2">
-                {isPending && (
-                  <>
-                    <Button onClick={() => decide(s._id, 'approve')} disabled={busy} className="rounded-xl h-10 font-bold">
-                      <Check className="h-4 w-4 me-1" /> {t('decideApprove')}
-                    </Button>
-                    <Button onClick={() => decide(s._id, 'reject')} disabled={busy} variant="outline" className="rounded-xl h-10 font-bold text-destructive border-destructive/40">
-                      <X className="h-4 w-4 me-1" /> {t('decideReject')}
-                    </Button>
-                  </>
-                )}
-                {isActive && (
-                  <>
-                    <Button onClick={() => setExtendSub(s)} disabled={busy} variant="outline" className="rounded-xl h-10 font-bold border-primary/40 text-primary">
-                      <CalendarClock className="h-4 w-4 me-1" /> {t('extendSub')}
-                    </Button>
-                    <Button onClick={() => act(() => api.post(`/admin/subscriptions/${s._id}/expire`), 'subDisabled')} disabled={busy} variant="outline" className="rounded-xl h-10 font-bold text-destructive border-destructive/40">
-                      <Ban className="h-4 w-4 me-1" /> {t('disableSub')}
-                    </Button>
-                  </>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Badge variant="outline" className="text-[10px] shrink-0">
+                  {row.user.role === 'owner' ? t('roleOwner') : t('roleSeeker')}
+                </Badge>
+                {row.unpaidDA > 0 && (
+                  <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300 shrink-0" dir="ltr">
+                    {row.unpaidDA.toLocaleString('fr-DZ')} DA
+                  </Badge>
                 )}
               </div>
             </div>
-          );
-        })
+
+            {/* numbers */}
+            <div className="rounded-xl bg-muted/50 p-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+              <DetailChip label={t('duesTasksCount')} value={String(row.tasksCount)} />
+              <DetailChip label={t('duesEarned')} value={da(row.earnedDA)} />
+              <DetailChip label={t('duesDuesShort', { rate: String(data?.rate ?? 15) })} value={da(row.duesDA)} />
+              <DetailChip label={t('duesPaid')} value={da(row.paidDA)} />
+              <div className="col-span-2">
+                <DetailChip label={t('duesUnpaid')} value={da(row.unpaidDA)} />
+              </div>
+            </div>
+
+            {/* actions */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => setSettleUser(row)}
+                disabled={busy}
+                variant={row.unpaidDA > 0 ? 'default' : 'outline'}
+                className="rounded-xl h-10 font-bold"
+              >
+                <Check className="h-4 w-4 me-1" /> {t('duesSettle')}
+              </Button>
+              <Button
+                onClick={() => remind(row)}
+                disabled={busy || row.unpaidDA <= 0}
+                variant="outline"
+                className="rounded-xl h-10 font-bold border-primary/40 text-primary"
+              >
+                <Send className="h-4 w-4 me-1" /> {t('duesRemind')}
+              </Button>
+            </div>
+            <button onClick={() => setDetailUser(row)} className="text-xs font-bold text-primary underline underline-offset-2">
+              {t('duesViewMonths')}
+            </button>
+          </div>
+        ))
       )}
 
-      {data && <Pager page={data.page || page} pages={data.pages} onChange={setPage} />}
+      {/* settle dialog */}
+      {settleUser && (
+        <SettleDialog
+          userId={settleUser.user._id}
+          userName={settleUser.user.name}
+          defaultMonth={month}
+          onClose={() => setSettleUser(null)}
+          onDone={() => {
+            setSettleUser(null);
+            qc.invalidateQueries({ queryKey: ['admin-dues'] });
+            qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
+            qc.invalidateQueries({ queryKey: ['admin-stats'] });
+          }}
+        />
+      )}
 
-      {/* full-screen proof viewer */}
-      <AlertDialog open={!!proof} onOpenChange={(o) => !o && setProof(null)}>
-        <AlertDialogContent className="rounded-2xl max-w-lg" aria-describedby={undefined}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('proof')}</AlertDialogTitle>
-          </AlertDialogHeader>
-          {proof && <img src={proof} alt={t('proof')} className="w-full rounded-xl border max-h-[60dvh] object-contain" />}
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl h-11">{t('close')}</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* extend dialog */}
-      <AlertDialog open={!!extendSub} onOpenChange={(o) => !o && setExtendSub(null)}>
-        <AlertDialogContent className="rounded-2xl max-w-sm" aria-describedby={undefined}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('extendSub')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('extendSubHint')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="ext-days">{t('subscriptionDuration')} ({t('days')})</Label>
-            <Input id="ext-days" type="number" inputMode="numeric" min={1} max={3650} value={extendDays} onChange={(e) => setExtendDays(e.target.value)} className="h-11 rounded-xl" />
-            <div className="flex gap-2 pt-1">
-              {[7, 30, 90].map((d) => (
-                <button key={d} type="button" onClick={() => setExtendDays(String(d))} className="flex-1 h-9 rounded-xl border-2 text-xs font-bold hover:border-primary/60 active:scale-95 transition-all">{d} {t('days')}</button>
-              ))}
-            </div>
-          </div>
-          <AlertDialogFooter className="gap-2">
-            <AlertDialogCancel className="rounded-xl h-11">{t('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => extendSub && act(() => api.post(`/admin/subscriptions/${extendSub._id}/extend`, { days: Math.max(1, Number(extendDays) || 0) }), 'subExtended')}
-              disabled={busy || Number(extendDays) < 1}
-              className="rounded-xl h-11 font-bold"
-            >
-              {t('confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* per-month breakdown dialog */}
+      {detailUser && (
+        <UserMonthsDialog
+          userId={detailUser.user._id}
+          onClose={() => setDetailUser(null)}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ['admin-dues'] });
+            qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
+            qc.invalidateQueries({ queryKey: ['admin-stats'] });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function DetailChip({ label, value }: { label: string; value: string }) {
+function DetailChip({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-bold text-muted-foreground leading-tight">{label}</p>
-      <p className="text-sm font-semibold break-words leading-snug">{value}</p>
+      <p className={`text-sm font-semibold break-words leading-snug ${strong ? 'text-amber-700 dark:text-amber-300 font-extrabold' : ''}`}>{value}</p>
     </div>
   );
 }
 
-function SubStatusBadge({ status, t }: { status: string; t: (k: string, p?: Record<string, string | number>) => string }) {
-  const map: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300',
-    active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300',
-    expired: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border-rose-300',
-    rejected: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border-rose-300',
-  };
-  const key = status === 'pending' ? 'pendingSubs' : status === 'active' ? 'subActiveBadge' : status === 'expired' ? 'subscriptionExpired' : 'subRejectedBadge';
-  return <Badge variant="outline" className={`text-[10px] font-bold ${map[status] || ''}`}>{t(key)}</Badge>;
+/** Mark ONE month of ONE executor as paid — amount prefilled with the computed dues. */
+function SettleDialog({
+  userId,
+  userName,
+  defaultMonth,
+  onClose,
+  onDone,
+}: {
+  userId: string;
+  userName: string;
+  defaultMonth: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t, lang } = useLang();
+  const [busy, setBusy] = useState(false);
+  const { data } = useQuery({
+    queryKey: ['admin-dues-user', userId],
+    queryFn: () => api.get<{ rate: number; months: DuesMonth[]; totals: MyDues['totals'] }>(`/dues/admin/user/${userId}`),
+  });
+  const unpaidMonths = (data?.months || []).filter((m) => m.unpaidDA > 0);
+  const [selMonth, setSelMonth] = useState<string>('');
+  const active = unpaidMonths.find((m) => m.month === selMonth) || unpaidMonths[0];
+  const [amount, setAmount] = useState<string>('');
+  const [note, setNote] = useState('');
+  const amountValue = amount === '' ? (active ? String(active.unpaidDA) : amount) : amount;
+
+  async function settle() {
+    if (!active) return;
+    setBusy(true);
+    try {
+      await api.post('/dues/admin/settle', {
+        userId,
+        month: active.month,
+        amountDA: Math.max(0, Number(amountValue) || 0),
+        ...(note.trim() ? { note: note.trim() } : {}),
+      });
+      toast.success(t('duesSettledToast'));
+      onDone();
+    } catch {
+      toast.error(t('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AlertDialog open onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent className="rounded-2xl max-w-sm max-h-[85dvh] overflow-y-auto" aria-describedby={undefined}>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2"><HandCoins className="h-5 w-5 text-primary" /> {t('duesSettle')}</AlertDialogTitle>
+          <AlertDialogDescription className="break-words">{t('duesSettleHint')}: {userName}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-3">
+          {unpaidMonths.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('duesNothingUnpaid')}</p>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label>{t('duesMonth')} *</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {unpaidMonths.map((m) => (
+                    <button
+                      key={m.month}
+                      type="button"
+                      onClick={() => { setSelMonth(m.month); setAmount(''); }}
+                      className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${(active?.month) === m.month ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}
+                    >
+                      {monthLabel(m.month, lang)} · <span dir="ltr">{m.unpaidDA.toLocaleString('fr-DZ')}</span>
+                    </button>
+                  ))}
+                </div>
+                {!defaultMonth && unpaidMonths.length === 0 && null}
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t('duesAmount')} (DA) *</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={amountValue}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="h-11 rounded-xl"
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t('duesNote')}</Label>
+                <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} className="h-11 rounded-xl" placeholder={t('duesNotePlaceholder')} />
+              </div>
+            </>
+          )}
+        </div>
+        <AlertDialogFooter className="gap-2">
+          <AlertDialogCancel className="rounded-xl h-11">{t('cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={settle}
+            disabled={busy || !active}
+            className="rounded-xl h-11 font-bold bg-emerald-600 text-white"
+          >
+            {busy ? <Hourglass className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 me-1" />}
+            {t('duesMarkPaid')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
-/* ---------- Settings (incl. packages editor) ---------- */
-function SettingsTab() {
+/** Per-month breakdown of one executor — reopen mistakes, settle, remind. */
+function UserMonthsDialog({
+  userId,
+  onClose,
+  onChanged,
+}: {
+  userId: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const { t, lang } = useLang();
   const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-dues-user', userId],
+    queryFn: () => api.get<{ rate: number; user: { name: string }; months: DuesMonth[]; totals: MyDues['totals'] }>(`/dues/admin/user/${userId}`),
+  });
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+      qc.invalidateQueries({ queryKey: ['admin-dues-user', userId] });
+      onChanged();
+    } catch {
+      toast.error(t('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AlertDialog open onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent className="rounded-2xl max-w-md max-h-[85dvh] overflow-y-auto" aria-describedby={undefined}>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" /> {t('duesViewMonths')}</AlertDialogTitle>
+          <AlertDialogDescription className="break-words">{data?.user?.name || ''}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {isLoading ? (
+          <Spinner />
+        ) : (
+          <div className="space-y-2.5">
+            {(data?.months || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">{t('duesNoTasks')}</p>
+            ) : (
+              data?.months.map((m) => (
+                <div key={m.month} className={`rounded-xl border p-3 space-y-2 ${m.unpaidDA > 0 ? 'border-amber-300 dark:border-amber-700' : ''}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold text-sm">{monthLabel(m.month, lang)}</p>
+                    {m.unpaidDA > 0 ? (
+                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300 shrink-0">{t('duesUnpaidBadge')}</Badge>
+                    ) : (
+                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-0 text-[10px] shrink-0">{t('duesPaidBadge')}</Badge>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 text-xs">
+                    <DetailChip label={t('duesTasksCount')} value={String(m.tasksCount)} />
+                    <DetailChip label={t('duesEarned')} value={da(m.earnedDA)} />
+                    <DetailChip label={t('duesCommissionShort', { rate: '' })} value={da(m.commissionDA)} />
+                    <DetailChip label={t('duesUnpaid')} value={da(m.unpaidDA)} strong={m.unpaidDA > 0} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      disabled={busy || m.unpaidDA <= 0}
+                      onClick={() => run(() => api.post('/dues/admin/settle', { userId, month: m.month }))}
+                      className="h-9 rounded-xl text-xs font-bold bg-emerald-600 text-white"
+                    >
+                      <Check className="h-3.5 w-3.5 me-1" /> {t('duesMarkPaid')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || m.paidDA <= 0}
+                      onClick={() => run(() => api.post('/dues/admin/unsettle', { userId, month: m.month }))}
+                      className="h-9 rounded-xl text-xs font-bold text-destructive border-destructive/40"
+                    >
+                      <X className="h-3.5 w-3.5 me-1" /> {t('duesUnsettle')}
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel className="rounded-xl h-11">{t('close')}</AlertDialogCancel>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/* ---------- Settings (commission rate + contact page) ---------- */
+function SettingsTab() {
+  const { t } = useLang();
+  const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
-  const [instructions, setInstructions] = useState<string | null>(null);
-  const [subEnabled, setSubEnabled] = useState<boolean | null>(null);
-  const [pkgs, setPkgs] = useState<SubPackage[] | null>(null);
+  const [rate, setRate] = useState<number | null>(null);
   const [contact, setContact] = useState<{ phone: string; email: string; instagram: string; address: string } | null>(null);
 
   const { data: settings } = useQuery({
@@ -1125,22 +1247,19 @@ function SettingsTab() {
     staleTime: 30_000,
   });
 
-  const curPkg = pkgs ?? settings?.packages ?? [];
-  const curEnabled = subEnabled ?? settings?.subscription.isEnabled ?? true;
-  const curInstr = instructions ?? settings?.subscription.paymentInstructions ?? '';
+  const curRate = rate ?? settings?.commissionPercent ?? 15;
   const curContact = contact ?? settings?.contact ?? { phone: '', email: '', instagram: '', address: '' };
 
   async function save() {
     setSaving(true);
     try {
       await api.put('/admin/settings', {
-        subscription: { isEnabled: curEnabled, paymentInstructions: curInstr },
-        packages: curPkg,
+        commissionPercent: Math.min(50, Math.max(0, Math.round(curRate))),
         contact: curContact,
       });
       toast.success(t('settingsSaved'));
       qc.invalidateQueries({ queryKey: ['settings'] });
-      qc.invalidateQueries({ queryKey: ['my-subscription'] });
+      qc.invalidateQueries({ queryKey: ['admin-dues'] });
     } catch {
       toast.error(t('error'));
     } finally {
@@ -1148,37 +1267,17 @@ function SettingsTab() {
     }
   }
 
-  function updatePkg(i: number, patch: Partial<SubPackage>) {
-    setPkgs((prev) => (prev ?? [...(settings?.packages ?? [])]).map((p, j) => (j === i ? { ...p, ...patch } : p)));
-  }
-
-  async function uploadPkgImage(i: number, files: FileList | null) {
-    const f = files?.[0];
-    if (!f) return;
-    try {
-      const c = await compressImage(f);
-      const res = await api.post<{ gridId: string }>('/admin/package-image', { mime: c.mime, dataBase64: c.dataBase64 });
-      updatePkg(i, { imageGridId: res.gridId });
-      toast.success(t('saved'));
-    } catch {
-      toast.error(t('error'));
-    }
-  }
-
   return (
     <div className="space-y-4 max-w-xl">
-      <div className="rounded-2xl border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="font-bold text-sm">{t('subEnabled')}</span>
-          <Switch checked={curEnabled} onCheckedChange={setSubEnabled} />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">{t('paymentInstructions')}</Label>
-          <Textarea value={curInstr} onChange={(e) => setInstructions(e.target.value)} className="min-h-24 rounded-xl text-sm" maxLength={3000} />
-        </div>
+      {/* v4.14 — commission model: the platform earns a % of every completed task */}
+      <div className="rounded-2xl border-2 border-primary/25 bg-primary/5 p-4 space-y-3">
+        <h3 className="font-bold text-sm flex items-center gap-1.5"><HandCoins className="h-4 w-4 text-primary" /> {t('commissionTitle')}</h3>
+        <NumField label={t('commissionPercent')} value={curRate} onChange={(v) => setRate(Math.min(50, Math.max(0, v)))} />
+        <p className="text-[11px] text-muted-foreground leading-relaxed break-words">{t('commissionPercentHint')}</p>
       </div>
 
-      {/* v4.6 — contact page content, edited here and shown to all users */}
+      {/* v4.6 — contact page content, edited here and shown to all users
+          (v4.14: also the contact the executors use to pay their dues) */}
       <div className="rounded-2xl border bg-card p-4 space-y-3">
         <h3 className="font-bold text-sm flex items-center gap-1.5"><Phone className="h-4 w-4 text-primary" /> {t('contactInfo')}</h3>
         <div className="grid grid-cols-2 gap-2">
@@ -1200,66 +1299,6 @@ function SettingsTab() {
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground leading-snug">{t('contactIntro')}</p>
-      </div>
-
-      {/* packages */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-sm">{t('packages')}</h3>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setPkgs((prev) => [...(prev ?? [...(settings?.packages ?? [])]), { key: `pkg-${Date.now()}`, name: { ar: 'باقة جديدة', fr: 'Nouveau forfait', en: 'New package' }, priceDA: 1000, durationDays: 30, maxActiveOffers: 5, active: true }])}
-            className="rounded-xl h-9"
-          >
-            <Plus className="h-4 w-4 me-1" /> {t('addPackage')}
-          </Button>
-        </div>
-        {curPkg.map((p, i) => (
-          <div key={p.key + i} className="rounded-2xl border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Input value={p.name[lang] || p.name.en} onChange={(e) => updatePkg(i, { name: { ...p.name, [lang]: e.target.value } })} className="h-10 rounded-xl font-bold" placeholder={t('packageName')} />
-              <button
-                onClick={() => setPkgs((prev) => (prev ?? [...(settings?.packages ?? [])]).filter((_, j) => j !== i))}
-                aria-label={t('removePackage')}
-                className="h-9 w-9 rounded-xl border border-destructive/40 text-destructive flex items-center justify-center hover:bg-destructive/10 active:scale-90 shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-            {/* promotional image of the package (v4) */}
-            <div className="flex items-center gap-3">
-              {p.imageGridId ? (
-                <div className="relative shrink-0">
-                  <img src={packageImageUrl(p.imageGridId)} alt="" className="h-20 w-28 rounded-xl border object-contain bg-muted" />
-                  <button
-                    onClick={() => updatePkg(i, { imageGridId: undefined })}
-                    aria-label={t('removePackageImage')}
-                    className="absolute -top-2 -end-2 h-6 w-6 rounded-full bg-destructive text-white flex items-center justify-center shadow active:scale-90 transition-transform"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <label className="h-16 w-28 rounded-xl border-2 border-dashed border-muted-foreground/40 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors text-muted-foreground shrink-0">
-                  <ImagePlus className="h-4 w-4" />
-                  <span className="text-[10px] font-bold">{t('packageImage')}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadPkgImage(i, e.target.files)} />
-                </label>
-              )}
-              <p className="text-xs text-muted-foreground leading-relaxed break-words">{t('packageImageHint')}</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <NumField label={t('subscriptionPrice')} value={p.priceDA} onChange={(v) => updatePkg(i, { priceDA: v })} />
-              <NumField label={t('subscriptionDuration')} value={p.durationDays} onChange={(v) => updatePkg(i, { durationDays: v })} />
-              <NumField label={t('maxActiveOffers')} value={p.maxActiveOffers} onChange={(v) => updatePkg(i, { maxActiveOffers: v })} />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground">{t('active')}</span>
-              <Switch checked={p.active} onCheckedChange={(v) => updatePkg(i, { active: v })} />
-            </div>
-          </div>
-        ))}
       </div>
 
       <Button onClick={save} disabled={saving} className="w-full h-12 rounded-xl font-bold shadow-lg shadow-primary/25">
@@ -1388,274 +1427,47 @@ function BroadcastTab() {
   );
 }
 
-/* ---------- Per-user subscription management (v4) ---------- */
-function UserSubPanel({ userId }: { userId: string }) {
-  const { t, lang } = useLang();
-  const qc = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [showGrant, setShowGrant] = useState(false);
-  const [showActivate, setShowActivate] = useState(false);
-
+/* ---------- Per-user dues summary (v4.14, in the user-details modal) ---------- */
+function UserDuesPanel({ userId }: { userId: string }) {
+  const { t } = useLang();
+  const setAdminTab = useApp((s) => s.setAdminTab);
   const { data } = useQuery({
-    queryKey: ['admin-user-subs', userId],
-    queryFn: () => api.get<{ items: Subscription[]; subLocked: boolean }>(`/admin/users/${userId}/subscriptions`),
+    queryKey: ['admin-dues-user', userId],
+    queryFn: () => api.get<{ rate: number; months: DuesMonth[]; totals: MyDues['totals'] }>(`/dues/admin/user/${userId}`),
   });
 
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: () => api.get<Settings>('/settings'),
-    staleTime: 60_000,
-  });
-
-  async function run(fn: () => Promise<unknown>, msg: string) {
-    setBusy(true);
-    try {
-      await fn();
-      toast.success(t(msg));
-      qc.invalidateQueries({ queryKey: ['admin-user-subs', userId] });
-      qc.invalidateQueries({ queryKey: ['admin-subs'] });
-    } catch {
-      toast.error(t('error'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const locked = data?.subLocked;
-  const subs = data?.items || [];
-  const activeSub = subs.find((s) => s.status === 'active');
+  const totals = data?.totals;
+  const unpaidMonths = (data?.months || []).filter((m) => m.unpaidDA > 0);
 
   return (
     <div className="rounded-xl border-2 border-primary/25 bg-primary/5 p-3 space-y-2.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-extrabold text-primary flex items-center gap-1.5"><Coins className="h-3.5 w-3.5" /> {t('userSubscription')}</p>
-        <Badge variant="outline" className={`text-[10px] ${locked ? 'border-rose-300 text-rose-600' : 'border-emerald-300 text-emerald-600'}`}>
-          {locked ? t('subLockedBadge') : t('subUnlockedBadge')}
+        <p className="text-xs font-extrabold text-primary flex items-center gap-1.5"><HandCoins className="h-3.5 w-3.5" /> {t('duesTitle')}</p>
+        <Badge variant="outline" className={`text-[10px] ${(totals?.unpaidDA || 0) > 0 ? 'border-amber-300 text-amber-600' : 'border-emerald-300 text-emerald-600'}`}>
+          {(totals?.unpaidDA || 0) > 0 ? t('duesUnpaidBadge') : t('duesAllPaidTitle')}
         </Badge>
       </div>
 
-      {activeSub ? (
-        <div className="text-xs space-y-0.5">
-          <p><b>{t('subPackageType')}:</b> {activeSub.packageName?.[lang] || activeSub.packageKey || t('legacyPlan')} · {activeSub.amountDA.toLocaleString('fr-DZ')} {t('da')}</p>
-          <p>
-            <b>{t('subscriptionActiveUntil')}:</b> {activeSub.endsAt ? new Date(activeSub.endsAt).toLocaleDateString() : '—'}
-            {(() => {
-              const d = subDaysLeft(activeSub);
-              return d !== null ? ` · ${d === 0 ? t('dayLeftOne') : t('daysLeft', { count: d })}` : '';
-            })()}
+      <div className="text-xs space-y-0.5">
+        <p><b>{t('duesTasksCount')}:</b> {totals?.tasks ?? 0}</p>
+        <p><b>{t('duesEarned')}:</b> <span dir="ltr">{da(totals?.earnedDA || 0)}</span></p>
+        <p><b>{t('duesUnpaid')}:</b> <span dir="ltr" className="font-extrabold text-amber-700 dark:text-amber-300">{da(totals?.unpaidDA || 0)}</span></p>
+        {unpaidMonths.length > 0 && (
+          <p className="text-[11px] text-muted-foreground break-words">
+            {unpaidMonths.map((m) => monthLabel(m.month, 'ar')).join(' · ')}
           </p>
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">{t('subscriptionNone')}</p>
-      )}
-
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => run(() => api.post(`/admin/users/${userId}/sub-lock`, { locked: !locked }), locked ? 'subEnabled' : 'subDisabled')}
-          className={`h-9 rounded-xl text-xs font-bold ${locked ? 'text-emerald-600 border-emerald-300' : 'text-destructive border-destructive/40'}`}
-        >
-          {locked ? <LockOpen className="h-3.5 w-3.5 me-1" /> : <Lock className="h-3.5 w-3.5 me-1" />}
-          {locked ? t('enableUserSub') : t('disableUserSub')}
-        </Button>
-        <Button size="sm" onClick={() => setShowGrant(true)} disabled={busy} className="h-9 rounded-xl text-xs font-bold">
-          <Gift className="h-3.5 w-3.5 me-1" /> {t('grantSub')}
-        </Button>
+        )}
       </div>
-      {/* v4.5 — activate a PAID subscription directly (counts as revenue, unlike a free grant) */}
-      <Button size="sm" variant="outline" onClick={() => setShowActivate(true)} disabled={busy} className="w-full h-9 rounded-xl text-xs font-bold text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40">
-        <Wallet className="h-3.5 w-3.5 me-1" /> {t('activateSub')}
+
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setAdminTab('dues')}
+        className="w-full h-9 rounded-xl text-xs font-bold border-primary/40 text-primary"
+      >
+        <HandCoins className="h-3.5 w-3.5 me-1" /> {t('duesAdminTab')}
       </Button>
-
-      {/* history (compact) */}
-      {subs.length > 1 && (
-        <div className="pt-1 border-t space-y-1">
-          {subs.slice(0, 4).map((s) => (
-            <div key={s._id} className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <SubStatusBadge status={s.status} t={t} />
-              <span className="break-words">{s.packageName?.[lang] || s.packageKey || t('legacyPlan')} · {s.amountDA.toLocaleString('fr-DZ')} {t('da')}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <GrantSubDialog
-        open={showGrant}
-        onClose={() => setShowGrant(false)}
-        packages={settings?.packages || []}
-        busy={busy}
-        onGrant={(payload) => run(() => api.post(`/admin/users/${userId}/grant-sub`, payload), 'subGranted')}
-      />
-      <ActivateSubDialog
-        open={showActivate}
-        onClose={() => setShowActivate(false)}
-        packages={settings?.packages || []}
-        busy={busy}
-        onActivate={(payload) => run(() => api.post(`/admin/users/${userId}/activate-sub`, payload), 'subActivated')}
-      />
     </div>
-  );
-}
-
-function GrantSubDialog({
-  open,
-  onClose,
-  packages,
-  busy,
-  onGrant,
-}: {
-  open: boolean;
-  onClose: () => void;
-  packages: SubPackage[];
-  busy: boolean;
-  onGrant: (payload: { days: number; packageKey?: string; maxActiveOffers?: number }) => void;
-}) {
-  const { t, lang } = useLang();
-  const [days, setDays] = useState('30');
-  const [pkgKey, setPkgKey] = useState('');
-  const [maxOffers, setMaxOffers] = useState('');
-
-  const pkg = packages.find((p) => p.key === pkgKey);
-
-  return (
-    <AlertDialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <AlertDialogContent className="rounded-2xl max-w-sm" aria-describedby={undefined}>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2"><Gift className="h-5 w-5 text-primary" /> {t('grantSub')}</AlertDialogTitle>
-          <AlertDialogDescription>{t('grantSubHint')}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>{t('subscriptionDuration')} ({t('days')}) *</Label>
-            <Input type="number" inputMode="numeric" min={1} max={3650} value={days} onChange={(e) => setDays(e.target.value)} className="h-11 rounded-xl" />
-            <div className="flex gap-2">
-              {[7, 30, 90, 365].map((d) => (
-                <button key={d} type="button" onClick={() => setDays(String(d))} className="flex-1 h-8 rounded-lg border-2 text-xs font-bold hover:border-primary/60 active:scale-95 transition-all">{d}</button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t('subPackageType')}</Label>
-            <select
-              value={pkgKey}
-              onChange={(e) => { setPkgKey(e.target.value); setMaxOffers(''); }}
-              className="h-11 w-full rounded-xl border bg-card px-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="">{t('legacyPlan')}</option>
-              {packages.map((p) => (
-                <option key={p.key} value={p.key}>{p.name[lang] || p.name.en}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t('maxActiveOffers')}</Label>
-            <Input
-              type="number" inputMode="numeric" min={1} max={100}
-              value={maxOffers || (pkg ? String(pkg.maxActiveOffers) : '')}
-              onChange={(e) => setMaxOffers(e.target.value)}
-              placeholder={pkg ? String(pkg.maxActiveOffers) : '—'}
-              className="h-11 rounded-xl"
-            />
-          </div>
-        </div>
-        <AlertDialogFooter className="gap-2">
-          <AlertDialogCancel className="rounded-xl h-11">{t('cancel')}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => onGrant({
-              days: Math.max(1, Number(days) || 0),
-              ...(pkgKey ? { packageKey: pkgKey } : {}),
-              ...(Number(maxOffers) > 0 ? { maxActiveOffers: Number(maxOffers) } : {}),
-            })}
-            disabled={busy || Number(days) < 1}
-            className="rounded-xl h-11 font-bold"
-          >
-            {busy && <Hourglass className="h-4 w-4 animate-spin" />} {t('confirm')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-/** v4.5 — activate a PAID subscription directly on a user account: the amount counts as revenue. */
-function ActivateSubDialog({
-  open,
-  onClose,
-  packages,
-  busy,
-  onActivate,
-}: {
-  open: boolean;
-  onClose: () => void;
-  packages: SubPackage[];
-  busy: boolean;
-  onActivate: (payload: { days: number; amountDA: number; packageKey?: string; maxActiveOffers?: number; reference?: string }) => void;
-}) {
-  const { t, lang } = useLang();
-  const [pkgKey, setPkgKey] = useState('');
-  const [days, setDays] = useState('');
-  const [amount, setAmount] = useState('');
-  const [reference, setReference] = useState('');
-
-  const pkg = packages.find((p) => p.key === pkgKey);
-  const effectiveDays = days || (pkg ? String(pkg.durationDays) : '');
-  const effectiveAmount = amount || (pkg ? String(pkg.priceDA) : '');
-
-  return (
-    <AlertDialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <AlertDialogContent className="rounded-2xl max-w-sm" aria-describedby={undefined}>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-emerald-600" /> {t('activateSub')}</AlertDialogTitle>
-          <AlertDialogDescription>{t('activateSubHint')}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>{t('subPackageType')}</Label>
-            <select
-              value={pkgKey}
-              onChange={(e) => { setPkgKey(e.target.value); setDays(''); setAmount(''); }}
-              className="h-11 w-full rounded-xl border bg-card px-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="">{t('legacyPlan')}</option>
-              {packages.map((p) => (
-                <option key={p.key} value={p.key}>{p.name[lang] || p.name.en} · {p.priceDA.toLocaleString('fr-DZ')} {t('da')} · {p.durationDays} {t('days')}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label>{t('subscriptionDuration')} ({t('days')}) *</Label>
-              <Input type="number" inputMode="numeric" min={1} max={3650} value={effectiveDays} onChange={(e) => setDays(e.target.value)} placeholder={pkg ? String(pkg.durationDays) : '30'} className="h-11 rounded-xl" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t('subAmountDA')} *</Label>
-              <Input type="number" inputMode="numeric" min={1} value={effectiveAmount} onChange={(e) => setAmount(e.target.value)} placeholder={pkg ? String(pkg.priceDA) : '2000'} className="h-11 rounded-xl" />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t('paymentReference')}</Label>
-            <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={40} placeholder="TR-XXXXXX" className="h-11 rounded-xl" dir="ltr" />
-          </div>
-        </div>
-        <AlertDialogFooter className="gap-2">
-          <AlertDialogCancel className="rounded-xl h-11">{t('cancel')}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => onActivate({
-              days: Math.max(1, Number(effectiveDays) || 0),
-              amountDA: Math.max(1, Number(effectiveAmount) || 0),
-              ...(pkgKey ? { packageKey: pkgKey } : {}),
-              ...(reference.trim() ? { reference: reference.trim() } : {}),
-            })}
-            disabled={busy || Number(effectiveDays) < 1 || Number(effectiveAmount) < 1}
-            className="rounded-xl h-11 font-bold bg-emerald-600 text-white"
-          >
-            {busy && <Hourglass className="h-4 w-4 animate-spin" />} {t('confirm')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 
@@ -1697,7 +1509,9 @@ function AnalyticsSection() {
       {/* system-control KPIs (v4.5) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Kpi icon={Handshake} label={t('tasksDoneKpi')} value={data.smart.tasksDone} />
-        <Kpi icon={Wallet} label={t('subsActiveKpi')} value={data.smart.subsActive} />
+        {/* v4.14 — commission dues replace the subscription KPIs */}
+        <Kpi icon={HandCoins} label={t('duesUnpaidKpi')} value={`${(data.dues.unpaidDA || 0).toLocaleString('fr-DZ')}`} highlight={(data.dues.unpaidDA || 0) > 0} />
+        <Kpi icon={Hourglass} label={t('duesUnpaidUsersKpi')} value={data.dues.unpaidUsers || 0} highlight={(data.dues.unpaidUsers || 0) > 0} />
         <Kpi icon={BadgeCheck} label={t('verifiedKpi')} value={data.smart.idStatus.verified || 0} />
         <Kpi icon={Ban} label={t('bannedKpi')} value={data.smart.usersBanned} />
         <Kpi icon={Gavel} label={t('complaintsOpenCount')} value={data.smart.complaints.open || 0} />
@@ -1722,25 +1536,9 @@ function AnalyticsSection() {
       <ChartCard title={t('dailyNewOffers')} icon={Wrench}>
         <Bars data={data.offersSeries.map((d) => ({ label: dayLabel(d.date), value: d.count }))} color="#f59e0b" />
       </ChartCard>
-      <ChartCard title={t('dailyRevenue')} icon={Coins}>
+      <ChartCard title={t('dailyRevenue')} icon={HandCoins}>
         <Bars data={data.revenueSeries.map((d) => ({ label: dayLabel(d.date), value: d.amount }))} color="#10b981" money />
       </ChartCard>
-
-      <div className="grid sm:grid-cols-2 gap-4">
-        <ChartCard title={t('subsByStatus')} icon={Coins}>
-          <Donut
-            slices={[
-              { label: t('pendingSubs'), value: data.subsByStatus.pending || 0, color: '#f59e0b' },
-              { label: t('subActiveBadge'), value: data.subsByStatus.active || 0, color: '#10b981' },
-              { label: t('subscriptionExpired'), value: data.subsByStatus.expired || 0, color: '#f43f5e' },
-              { label: t('subRejectedBadge'), value: data.subsByStatus.rejected || 0, color: '#94a3b8' },
-            ].filter((s) => s.value > 0)}
-          />
-        </ChartCard>
-        <ChartCard title={t('subsByPackagePaid')} icon={Layers3}>
-          <HBars items={data.subsByPackage.map((p) => ({ label: p.key === 'legacy' ? t('legacyPlan') : (settings?.packages?.find((x) => x.key === p.key)?.name[lang] || p.key), value: p.count, sub: `${t('revenueShort')}: ${p.DA.toLocaleString('fr-DZ')} ${t('da')}` }))} color="#8b5cf6" />
-        </ChartCard>
-      </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
         <ChartCard title={t('offersByCategory')} icon={LayoutDashboard}>
@@ -1855,14 +1653,20 @@ function HBars({ items, color }: { items: { label: string; value: number; sub?: 
   );
 }
 
-/** Donut chart with legend (subscription statuses) — the share of each slice
+/** Donut chart with legend — the share of each slice
  *  appears in an elegant floating badge on hover (desktop) or tap (mobile). */
 function Donut({ slices }: { slices: { label: string; value: number; color: string }[] }) {
   const [hover, setHover] = useState<number | null>(null);
   const total = slices.reduce((a, s) => a + s.value, 0);
   if (!total) return <p className="text-xs text-muted-foreground py-4 text-center">—</p>;
   const R = 15.915; // circumference = 100
-  let offset = 0;
+  // precompute arc lengths/offsets immutably (eslint react-hooks/immutability)
+  const arcs = slices.reduce<{ s: (typeof slices)[number]; len: number; off: number }[]>((arr, s) => {
+    const prev = arr[arr.length - 1];
+    const off = prev ? prev.off + prev.len : 0;
+    arr.push({ s, len: (s.value / total) * 100, off });
+    return arr;
+  }, []);
   const hovered = hover != null ? slices[hover] : null;
   const pct = hovered ? Math.round((hovered.value / total) * 100) : null;
   const pick = (i: number) => setHover((cur) => (cur === i ? null : i));
@@ -1871,8 +1675,7 @@ function Donut({ slices }: { slices: { label: string; value: number; color: stri
       <div className="relative shrink-0">
         <svg viewBox="0 0 40 40" className="h-24 w-24 -rotate-90">
           <circle cx="20" cy="20" r={R} fill="none" stroke="currentColor" className="text-muted" strokeWidth="6" />
-          {slices.map((s, i) => {
-            const len = (s.value / total) * 100;
+          {arcs.map(({ s, len, off }, i) => {
             const el = (
               <circle
                 key={i}
@@ -1880,14 +1683,13 @@ function Donut({ slices }: { slices: { label: string; value: number; color: stri
                 fill="none" stroke={s.color}
                 strokeWidth={hover === i ? 8 : 6}
                 strokeDasharray={`${len} ${100 - len}`}
-                strokeDashoffset={-offset}
+                strokeDashoffset={-off}
                 className="transition-all cursor-pointer"
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
                 onClick={() => pick(i)}
               />
             );
-            offset += len;
             return el;
           })}
         </svg>

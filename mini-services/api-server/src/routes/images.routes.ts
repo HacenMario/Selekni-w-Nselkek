@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { Offer } from '../models/offer.model';
-import { Subscription } from '../models/subscription.model';
 import { User } from '../models/user.model';
 import { auth, AuthRequest } from '../middleware/auth';
 import { asyncH } from '../middleware/error';
@@ -41,15 +40,6 @@ router.get('/:offerId/:imageId', asyncH(async (req: AuthRequest, res: Response) 
   res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.set('Content-Length', String(img.data.length));
   res.end(img.data);
-}));
-
-router.get('/sub/:subscriptionId/:imageId', auth, asyncH(async (req: AuthRequest, res: Response) => {
-  if (!req.user!.isSuperAdmin) { res.status(403).json({ error: 'Super admin only', code: 'NOT_ADMIN' }); return; }
-  const sub = await Subscription.findOne({ _id: req.params.subscriptionId, 'proofImage._id': req.params.imageId }).select('proofImage');
-  if (!sub?.proofImage) { res.status(404).json({ error: 'Image not found', code: 'NOT_FOUND' }); return; }
-  res.set('Content-Type', sub.proofImage.mime);
-  res.set('Cache-Control', 'private, max-age=86400');
-  res.end(sub.proofImage.data);
 }));
 
 export default router;

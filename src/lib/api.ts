@@ -54,21 +54,11 @@ export function imageUrl(offerId: string, imageId: string): string {
   return buildUrl(`/images/${offerId}/${imageId}`);
 }
 
-/** Public marketing image of a subscription package (no auth needed). */
-export function packageImageUrl(gridId: string): string {
-  return buildUrl(`/media/package/${gridId}`);
-}
-
 export function avatarUrl(userId: string, version?: string): string {
   // <img> tags cannot send the Authorization header — token must ride in the query.
   // `version` (updatedAt) busts the HTTP cache so a freshly-uploaded photo shows instantly.
   const v = version ? encodeURIComponent(version) : undefined;
   return buildUrl(`/images/avatar/${userId}`, { token: token() || undefined, ...(v ? { v } : {}) });
-}
-
-export function subProofUrl(subscriptionId: string, imageId: string, tokenStr: string): string {
-  // admin-only proof image: token passed via query for <img> support
-  return buildUrl(`/images/sub/${subscriptionId}/${imageId}`, { token: tokenStr });
 }
 
 /** Admin-only ID-card photo for account verification review (query token for <img>). */

@@ -86,7 +86,8 @@ export function BottomNav({ onCreate }: { onCreate?: () => void }) {
   }
   if (user.role === 'owner') {
     items.push({ key: 'offers', label: t('myOffers'), icon: Bell });
-    items.push({ key: 'subscription', label: t('subscription'), icon: CreditCard });
+    // v4.14 — commission dues replace the subscription tab
+    items.push({ key: 'dues', label: t('duesTitle'), icon: CreditCard });
   } else {
     items.push({ key: 'feed', label: t('feed'), icon: Compass });
     items.push({ key: 'tasks', label: t('tasksLabel'), icon: Wrench });

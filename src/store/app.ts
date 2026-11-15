@@ -4,16 +4,15 @@ import { create } from 'zustand';
 import { User, Offer } from '@/lib/types';
 
 export type Screen = 'splash' | 'auth' | 'interests' | 'main';
-export type Tab = 'feed' | 'tasks' | 'offers' | 'subscription' | 'notifications' | 'profile' | 'contact' | 'admin';
-export type AdminTab = 'dashboard' | 'subs' | 'complaints' | 'users' | 'offers' | 'settings' | 'broadcast';
+// v4.14 — 'subscription' tab replaced by 'dues' (commission model)
+export type Tab = 'feed' | 'tasks' | 'offers' | 'dues' | 'notifications' | 'profile' | 'contact' | 'admin';
+export type AdminTab = 'dashboard' | 'dues' | 'complaints' | 'users' | 'offers' | 'settings' | 'broadcast';
 export type LiveState = 'hidden' | 'view' | 'taken';
 
 interface AppState {
   screen: Screen;
   tab: Tab;
   adminTab: AdminTab;
-  // shared filter for the admin subscriptions tab (notifications can preset it to 'pending')
-  adminSubsFilter: string;
   user: User | null;
   booted: boolean;
   detailOfferId: string | null;
@@ -23,7 +22,6 @@ interface AppState {
   setScreen: (s: Screen) => void;
   setTab: (t: Tab) => void;
   setAdminTab: (t: AdminTab) => void;
-  setAdminSubsFilter: (f: string) => void;
   setUser: (u: User | null) => void;
   setBooted: (b: boolean) => void;
   openOfferDetail: (id: string) => void;
@@ -38,7 +36,6 @@ export const useApp = create<AppState>((set) => ({
   screen: 'splash',
   tab: 'feed',
   adminTab: 'dashboard',
-  adminSubsFilter: '',
   user: null,
   booted: false,
   detailOfferId: null,
@@ -48,7 +45,6 @@ export const useApp = create<AppState>((set) => ({
   setScreen: (s) => set({ screen: s }),
   setTab: (t) => set({ tab: t }),
   setAdminTab: (t) => set({ adminTab: t }),
-  setAdminSubsFilter: (f) => set({ adminSubsFilter: f }),
   setUser: (u) => set({ user: u }),
   setBooted: (b) => set({ booted: b }),
   openOfferDetail: (id) => set({ detailOfferId: id }),

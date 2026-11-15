@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { avatarUrl } from '@/lib/api';
 import { PublicUser, User } from '@/lib/types';
 
@@ -16,18 +16,22 @@ export function UserAvatar({
   textClass?: string;
   ring?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
-  // bump when the photo version changes (updatedAt) so a new upload replaces the cached one
-  useEffect(() => setFailed(false), [user?._id, user?.hasAvatar, (user as { updatedAt?: string } | null | undefined)?.updatedAt]);
+  // reset is derived, not an effect: the failure is scoped to the exact photo
+  // version (id + updatedAt) so a new upload or a different user retries naturally
+  const version = (user as { updatedAt?: string } | null | undefined)?.updatedAt || '';
+  const identity = `${user?._id || ''}|${version}|${user?.hasAvatar ? 1 : 0}`;
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const failed = failedFor === identity;
   const showPhoto = user?.hasAvatar && !failed;
 
   if (showPhoto) {
     return (
       <img
-        src={avatarUrl(user._id, (user as { updatedAt?: string } | null | undefined)?.updatedAt)}
+        key={identity}
+        src={avatarUrl(user._id, version || undefined)}
         alt={user.name || ''}
         loading="lazy"
-        onError={() => setFailed(true)}
+        onError={() => setFailedFor(identity)}
         className={`${size} ${ring ? 'ring-2 ring-primary/30' : ''} rounded-2xl object-cover border bg-muted shrink-0`}
         draggable={false}
       />

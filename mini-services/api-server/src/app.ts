@@ -3,7 +3,7 @@ import cors from 'cors';
 import { authRouter, meRouter } from './routes/auth.routes';
 import offersRoutes from './routes/offers.routes';
 import notificationsRoutes from './routes/notifications.routes';
-import subscriptionsRoutes from './routes/subscriptions.routes';
+import duesRoutes from './routes/dues.routes';
 import settingsRoutes from './routes/settings.routes';
 import statsRoutes from './routes/stats.routes';
 import imagesRoutes from './routes/images.routes';
@@ -45,7 +45,7 @@ export function createApp(): express.Express {
   app.use('/api/me', meRouter);
   app.use('/api/offers', offersRoutes);
   app.use('/api/notifications', notificationsRoutes);
-  app.use('/api/subscriptions', subscriptionsRoutes);
+  app.use('/api/dues', duesRoutes); // v4.14 — commission model (replaces subscriptions)
   app.use('/api/settings', settingsRoutes);
   app.use('/api/stats', statsRoutes);
   app.use('/api/images', imagesRoutes);

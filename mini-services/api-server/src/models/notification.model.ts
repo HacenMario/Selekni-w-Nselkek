@@ -8,9 +8,10 @@ export interface INotification extends Document {
     | 'offer_awaiting'
     | 'offer_done'
     | 'offer_cancelled'
-    | 'subscription_pending'
-    | 'subscription_confirmed'
-    | 'subscription_rejected'
+    // v4.14 — commission model: legacy subscription_* types retired,
+    // dues notifications replace them
+    | 'dues_reminder'
+    | 'dues_paid'
     | 'id_pending'
     | 'complaint_new'
     | 'complaint_resolved'

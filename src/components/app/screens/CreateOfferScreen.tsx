@@ -107,8 +107,8 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
       onDone();
     } catch (e) {
       const code = (e as { code?: string }).code;
-      if (code === 'SUBSCRIPTION_REQUIRED') toast.error(t('subscriptionRequired'));
-      else if (code === 'MAX_OFFERS_REACHED') toast.error(`${t('maxActiveOffers')}: ${settings?.subscription.maxActiveOffers}`);
+      // v4.14 — no subscription gate anymore; only the anti-spam cap can reject
+      if (code === 'MAX_OFFERS_REACHED') toast.error(`${t('maxActiveOffers')}: ${settings?.subscription.maxActiveOffers}`);
       else toast.error(t('error'));
     } finally {
       setSaving(false);

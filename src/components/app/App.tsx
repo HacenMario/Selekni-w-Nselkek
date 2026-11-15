@@ -19,11 +19,10 @@ import { NotificationsScreen } from '@/components/app/screens/NotificationsScree
 import { ContactScreen } from '@/components/app/screens/ContactScreen';
 import { ProfileScreen } from '@/components/app/screens/ProfileScreen';
 import { AdminScreen } from '@/components/app/screens/AdminScreen';
-import { SubscriptionScreen } from '@/components/app/screens/SubscriptionScreen';
+import { DuesScreen } from '@/components/app/screens/DuesScreen';
 import { OfferDetailSheet } from '@/components/app/screens/OfferDetailSheet';
 import { LiveOfferWatcher, LiveOfferModal } from '@/components/app/screens/LiveOfferModal';
 import { CompleteProfileModal } from '@/components/app/screens/CompleteProfileModal';
-import { PromoBubble } from '@/components/app/PromoBubble';
 import { BackToTop } from '@/components/app/BackToTop';
 import { BottomNav, TopBar } from '@/components/app/chrome';
 import { useQuery } from '@tanstack/react-query';
@@ -148,8 +147,9 @@ function MainShell() {
           <NotificationsScreen />
         ) : tab === 'profile' ? (
           <ProfileScreen />
-        ) : tab === 'subscription' && role === 'owner' ? (
-          <SubscriptionScreen />
+        ) : tab === 'dues' ? (
+          // v4.14 — commission dues (replaces the subscription screen), available to every account
+          <DuesScreen />
         ) : role === 'owner' ? (
           <MyOffersScreen onCreate={() => setCreating(true)} />
         ) : tab === 'tasks' ? (
@@ -163,7 +163,6 @@ function MainShell() {
       <LiveOfferWatcher />
       <LiveOfferModal />
       <CompleteProfileModal />
-      <PromoBubble />
       <BackToTop />
       <BottomNav onCreate={() => setCreating(true)} />
       <SwMessageBridge />

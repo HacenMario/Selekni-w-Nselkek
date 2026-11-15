@@ -3,14 +3,14 @@ import { z } from 'zod';
 import mongoose from 'mongoose';
 import { User } from '../models/user.model';
 import { Offer } from '../models/offer.model';
-import { Subscription } from '../models/subscription.model';
+import { MonthlySettlement, commissionRate } from '../models/commission.model';
 import { Complaint } from '../models/complaint.model';
 import { Settings, DEFAULT_CATEGORIES } from '../models/settings.model';
 import { Notification } from '../models/notification.model';
 import { auth, adminOnly, AuthRequest } from '../middleware/auth';
 import { asyncH } from '../middleware/error';
 import { notifyUsers } from '../services/notification.service';
-import { decodeImages } from '../utils/images';
+import { getSettings } from '../services/settings.service';
 
 const router = Router();
 router.use(auth, adminOnly);
@@ -20,9 +20,37 @@ function adminNotify(userId: unknown, ar: string, fr: string, en: string, extra:
   notifyUsers([userId], 'system', { titleAr: ar, titleFr: fr, titleEn: en, ...extra }).catch(() => {});
 }
 
+/** Platform dues summary (v4.14 commission model): unpaid executors + totals. */
+async function duesSummary() {
+  const settings = await getSettings();
+  const rate = commissionRate(settings);
+  const [byUser, paidRows] = await Promise.all([
+    Offer.aggregate([
+      { $match: { status: 'done', completedAt: { $ne: null }, acceptedBy: { $ne: null } } },
+      { $group: { _id: '$acceptedBy', tasks: { $sum: 1 }, earned: { $sum: '$amountDA' } } },
+    ]),
+    MonthlySettlement.aggregate([{ $group: { _id: '$user', paid: { $sum: '$amountDA' } } }]),
+  ]);
+  const paidByUser = new Map<string, number>((paidRows as any[]).map((r) => [String(r._id), r.paid || 0]));
+  let unpaidUsers = 0, unpaidDA = 0, duesDA = 0;
+  for (const r of byUser as any[]) {
+    const d = Math.round(((r.earned || 0) * rate) / 100);
+    duesDA += d;
+    const unpaid = Math.max(0, d - (paidByUser.get(String(r._id)) || 0));
+    if (unpaid > 0) { unpaidUsers += 1; unpaidDA += unpaid; }
+  }
+  const monthStart = new Date();
+  monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const monthAgg = await Offer.aggregate([
+    { $match: { status: 'done', completedAt: { $gte: monthStart }, acceptedBy: { $ne: null } } },
+    { $group: { _id: null, earned: { $sum: '$amountDA' } } },
+  ]);
+  return { rate, unpaidUsers, unpaidDA, duesDA, monthCommissionsDA: Math.round((((monthAgg[0] as any)?.earned || 0) * rate) / 100) };
+}
+
 /* ---- Dashboard ---- */
 router.get('/dashboard', asyncH(async (_req: AuthRequest, res) => {
-  const [usersTotal, owners, seekers, idPendingUsers, verifiedUsers, bannedUsers, offersOpen, offersAssigned, offersAwaiting, offersDone, offersCancelled, subsPending, subsActive, complaintsOpen, recentUsers, expiringSubDocs] = await Promise.all([
+  const [usersTotal, owners, seekers, idPendingUsers, verifiedUsers, bannedUsers, offersOpen, offersAssigned, offersAwaiting, offersDone, offersCancelled, complaintsOpen, recentUsers, dues] = await Promise.all([
     User.countDocuments({ isSuperAdmin: { $ne: true } }),
     User.countDocuments({ role: 'owner', isSuperAdmin: { $ne: true } }),
     User.countDocuments({ role: 'seeker', isSuperAdmin: { $ne: true } }),
@@ -36,30 +64,16 @@ router.get('/dashboard', asyncH(async (_req: AuthRequest, res) => {
     Offer.countDocuments({ status: 'awaiting_confirmation' }),
     Offer.countDocuments({ status: 'done' }),
     Offer.countDocuments({ status: 'cancelled' }),
-    Subscription.countDocuments({ status: 'pending' }),
-    Subscription.countDocuments({ status: 'active', endsAt: { $gt: new Date() } }),
     Complaint.countDocuments({ status: 'open' }),
     User.find({ isSuperAdmin: { $ne: true } }).sort({ createdAt: -1 }).limit(10).select('name email phone role wilaya isBanned createdAt'),
-    // subscriptions that need renewal soon (<= 7 days left) so the admin can contact owners
-    Subscription.find({ status: 'active', endsAt: { $gt: new Date(), $lt: new Date(Date.now() + 7 * 24 * 3600 * 1000) } })
-      .populate('user', 'name email phone role')
-      .sort({ endsAt: 1 })
-      .limit(20),
+    duesSummary(),
   ]);
-  const expiringSubs = (expiringSubDocs as any[]).map((s) => ({
-    _id: String(s._id),
-    user: s.user,
-    endsAt: s.endsAt,
-    packageKey: s.packageKey,
-    amountDA: s.amountDA,
-    daysLeft: Math.max(0, Math.ceil((new Date(s.endsAt).getTime() - Date.now()) / 86400000)),
-  }));
   res.json({
     users: { total: usersTotal, owners, seekers, idPending: idPendingUsers, verified: verifiedUsers, banned: bannedUsers },
     offers: { open: offersOpen, assigned: offersAssigned, awaiting: offersAwaiting, done: offersDone, cancelled: offersCancelled },
-    subscriptions: { pending: subsPending, active: subsActive },
+    // v4.14 — commission model replaces the subscriptions block
+    dues: { rate: dues.rate, unpaidUsers: dues.unpaidUsers, unpaidDA: dues.unpaidDA, duesDA: dues.duesDA, monthCommissionsDA: dues.monthCommissionsDA },
     complaintsOpen,
-    expiringSubs,
     recentUsers,
   });
 }));
@@ -130,7 +144,7 @@ router.delete('/users/:id', asyncH(async (req: AuthRequest, res) => {
   await Promise.all([
     Offer.deleteMany({ owner: target._id }),
     Offer.updateMany({ acceptedBy: target._id }, { $set: { status: 'open', acceptedBy: undefined, acceptedAt: undefined } }),
-    Subscription.deleteMany({ user: target._id }),
+    MonthlySettlement.deleteMany({ user: target._id }),
     Notification.deleteMany({ user: target._id }),
     Complaint.deleteMany({ $or: [{ by: target._id }, { against: target._id }] }),
     (await import('../models/pushsubscription.model')).PushSubscription.deleteMany({ user: target._id }),
@@ -283,201 +297,7 @@ router.post('/complaints/:id/resolve', asyncH(async (req: AuthRequest, res) => {
   res.json(populated);
 }));
 
-/* ---- Subscriptions ---- */
-router.get('/subscriptions', asyncH(async (req: AuthRequest, res) => {
-  const page = Math.max(1, Number(req.query.page || 1));
-  const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
-  const status = (req.query.status as string) || '';
-  const filter: Record<string, unknown> = {};
-  if (status) filter.status = status;
-  const total = await Subscription.countDocuments(filter);
-  const items = await Subscription.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('user', 'name email phone role subLocked isSuperAdmin');
-  res.json({ items, total, page, pages: Math.ceil(total / limit) || 1 });
-}));
-
-/** All subscriptions of one account (details modal in the admin panel). */
-router.get('/users/:id/subscriptions', asyncH(async (req: AuthRequest, res) => {
-  const target = await User.findById(req.params.id);
-  if (!target) { res.status(404).json({ error: 'User not found', code: 'NOT_FOUND' }); return; }
-  await Subscription.updateMany({ user: target._id, status: 'active', endsAt: { $lt: new Date() } }, { $set: { status: 'expired' } });
-  const items = await Subscription.find({ user: target._id }).sort({ createdAt: -1 }).limit(30);
-  res.json({ items, subLocked: Boolean(target.subLocked) });
-}));
-
-/** Disable / re-enable the subscription of a specific account. */
-router.post('/users/:id/sub-lock', asyncH(async (req: AuthRequest, res) => {
-  const { locked } = z.object({ locked: z.boolean() }).parse(req.body);
-  const user = await User.findById(req.params.id);
-  if (!user) { res.status(404).json({ error: 'User not found', code: 'NOT_FOUND' }); return; }
-  if (user.isSuperAdmin) { res.status(403).json({ error: 'Cannot change the super admin subscription', code: 'FORBIDDEN' }); return; }
-  user.subLocked = locked;
-  await user.save();
-  if (locked) {
-    // disabling a subscription kills all of their active ones immediately
-    await Subscription.updateMany({ user: user._id, status: 'active' }, { $set: { status: 'expired', decidedBy: req.user!._id, decidedAt: new Date() } });
-  }
-  adminNotify(
-    user._id,
-    locked ? 'تم تعطيل اشتراكك بواسطة الإدارة' : 'تم إعادة تفعيل اشتراكك بواسطة الإدارة',
-    locked ? 'Votre abonnement a été désactivé par l administration' : 'Votre abonnement a été réactivé par l administration',
-    locked ? 'Your subscription was disabled by the administration' : 'Your subscription was re-enabled by the administration'
-  );
-  // v4.6 — re-enabling an account revives its latest expired subscription so the
-  // user sees an ACTIVE subscription right away (fresh window from now)
-  if (!locked) {
-    const latestExpired = await Subscription.findOne({ user: user._id, status: 'expired' }).sort({ createdAt: -1 });
-    if (latestExpired) {
-      latestExpired.status = 'active';
-      latestExpired.startsAt = new Date();
-      latestExpired.endsAt = new Date(Date.now() + (latestExpired.durationDays || 30) * 24 * 3600 * 1000);
-      latestExpired.decidedBy = req.user!._id;
-      latestExpired.decidedAt = new Date();
-      await latestExpired.save();
-    }
-  }
-  res.json({ ok: true, subLocked: locked });
-}));
-
-/** Grant a manual (free) subscription to an account — a super-admin power. */
-router.post('/users/:id/grant-sub', asyncH(async (req: AuthRequest, res) => {
-  const body = z.object({
-    days: z.number().int().min(1).max(3650),
-    packageKey: z.string().max(60).optional(),
-    maxActiveOffers: z.number().int().min(1).max(100).optional(),
-  }).parse(req.body);
-  const user = await User.findById(req.params.id);
-  if (!user) { res.status(404).json({ error: 'User not found', code: 'NOT_FOUND' }); return; }
-
-  let pkgName: { ar: string; fr: string; en: string } | undefined;
-  let maxOffers = body.maxActiveOffers;
-  const settings = await Settings.findOne({ key: 'main' });
-  if (body.packageKey && settings) {
-    const pkg = settings.packages.find((p) => p.key === body.packageKey);
-    if (pkg) { pkgName = pkg.name; maxOffers = maxOffers ?? pkg.maxActiveOffers; }
-  }
-
-  await Subscription.updateMany({ user: user._id, status: 'active' }, { $set: { status: 'expired' } });
-  const sub = await Subscription.create({
-    user: user._id,
-    status: 'active',
-    packageKey: body.packageKey,
-    packageName: pkgName,
-    amountDA: 0,
-    durationDays: body.days,
-    maxActiveOffers: maxOffers,
-    reference: `GRANT-${Date.now().toString(36).toUpperCase()}`,
-    startsAt: new Date(),
-    endsAt: new Date(Date.now() + body.days * 24 * 3600 * 1000),
-    decidedBy: req.user!._id,
-    decidedAt: new Date(),
-  });
-  // v4.7 — the granted subscription lifts the "disabled" state instantly
-  await User.updateOne({ _id: user._id }, { $set: { subLocked: false } });
-  adminNotify(
-    user._id,
-    `تم منحك اشتراكاً مجانياً لمدة ${body.days} يوم`,
-    `Un abonnement gratuit de ${body.days} jours vous a été accordé`,
-    `You were granted a free subscription for ${body.days} days`
-  );
-  res.status(201).json(sub);
-}));
-
-/** Activate a PAID subscription on a user account directly — the amount counts as revenue (v4.5).
- *  Unlike grant-sub (free gift), this records a real payment confirmed by the administration. */
-router.post('/users/:id/activate-sub', asyncH(async (req: AuthRequest, res) => {
-  const body = z.object({
-    days: z.number().int().min(1).max(3650),
-    amountDA: z.number().int().min(1).max(10000000),
-    packageKey: z.string().max(60).optional(),
-    maxActiveOffers: z.number().int().min(1).max(100).optional(),
-    reference: z.string().max(40).optional(),
-  }).parse(req.body);
-  const user = await User.findById(req.params.id);
-  if (!user) { res.status(404).json({ error: 'User not found', code: 'NOT_FOUND' }); return; }
-
-  let pkgName: { ar: string; fr: string; en: string } | undefined;
-  let maxOffers = body.maxActiveOffers;
-  const settings = await Settings.findOne({ key: 'main' });
-  if (body.packageKey && settings) {
-    const pkg = settings.packages.find((p) => p.key === body.packageKey);
-    if (pkg) { pkgName = pkg.name; maxOffers = maxOffers ?? pkg.maxActiveOffers; }
-  }
-
-  await Subscription.updateMany({ user: user._id, status: 'active' }, { $set: { status: 'expired', decidedBy: req.user!._id, decidedAt: new Date() } });
-  const sub = await Subscription.create({
-    user: user._id,
-    status: 'active',
-    packageKey: body.packageKey,
-    packageName: pkgName,
-    amountDA: body.amountDA,
-    durationDays: body.days,
-    maxActiveOffers: maxOffers,
-    reference: body.reference || `ADMIN-${Date.now().toString(36).toUpperCase()}`,
-    startsAt: new Date(),
-    endsAt: new Date(Date.now() + body.days * 24 * 3600 * 1000),
-    decidedBy: req.user!._id,
-    decidedAt: new Date(),
-  });
-  // v4.7 — the paid activation lifts the "disabled" state instantly
-  await User.updateOne({ _id: user._id }, { $set: { subLocked: false } });
-  adminNotify(
-    user._id,
-    `تم تفعيل اشتراكك لمدة ${body.days} يوم — شكراً لك`,
-    `Votre abonnement a été activé pour ${body.days} jours — merci`,
-    `Your subscription was activated for ${body.days} days — thank you`
-  );
-  res.status(201).json(sub);
-}));
-
-/** Immediately disable an active subscription. */
-router.post('/subscriptions/:id/expire', asyncH(async (req: AuthRequest, res) => {
-  const sub = await Subscription.findById(req.params.id);
-  if (!sub) { res.status(404).json({ error: 'Subscription not found', code: 'NOT_FOUND' }); return; }
-  sub.status = 'expired';
-  sub.endsAt = new Date();
-  sub.decidedBy = req.user!._id;
-  sub.decidedAt = new Date();
-  await sub.save();
-  adminNotify(sub.user, 'تم تعطيل اشتراكك بواسطة الإدارة', 'Votre abonnement a été désactivé par l administration', 'Your subscription was disabled by the administration');
-  const populated = await Subscription.findById(sub._id).populate('user', 'name email phone role subLocked');
-  res.json(populated);
-}));
-
-/** Extend an active subscription by N days. */
-router.post('/subscriptions/:id/extend', asyncH(async (req: AuthRequest, res) => {
-  const { days } = z.object({ days: z.number().int().min(1).max(3650) }).parse(req.body);
-  const sub = await Subscription.findById(req.params.id);
-  if (!sub) { res.status(404).json({ error: 'Subscription not found', code: 'NOT_FOUND' }); return; }
-  const base = sub.endsAt && sub.endsAt > new Date() ? new Date(sub.endsAt) : new Date();
-  sub.status = 'active';
-  sub.endsAt = new Date(base.getTime() + days * 24 * 3600 * 1000);
-  if (!sub.startsAt) sub.startsAt = new Date();
-  sub.decidedBy = req.user!._id;
-  sub.decidedAt = new Date();
-  await sub.save();
-  adminNotify(sub.user, `تم تمديد اشتراكك ${days} يوم`, `Votre abonnement a été prolongé de ${days} jours`, `Your subscription was extended by ${days} days`);
-  const populated = await Subscription.findById(sub._id).populate('user', 'name email phone role subLocked');
-  res.json(populated);
-}));
-
-/** Upload a promotional image for a subscription package → GridFS. */
-router.post('/package-image', asyncH(async (req: AuthRequest, res) => {
-  const body = z.object({ mime: z.string().regex(/^image\//), dataBase64: z.string().min(50) }).parse(req.body);
-  const { images, error } = decodeImages([{ mime: body.mime, dataBase64: body.dataBase64 }]);
-  if (error || !images.length) { res.status(400).json({ error: error || 'Bad image', code: 'BAD_IMAGE' }); return; }
-  const img = images[0];
-  if (img.data.length > 1.5 * 1024 * 1024) { res.status(400).json({ error: 'Image too large (max 1.5MB)', code: 'TOO_LARGE' }); return; }
-  const db = mongoose.connection.db;
-  if (!db) { res.status(500).json({ error: 'DB not ready', code: 'ERROR' }); return; }
-  const bucket = new mongoose.mongo.GridFSBucket(db, { bucketName: 'packageImages' });
-  const gridId = await new Promise<mongoose.mongo.ObjectId>((resolve, reject) => {
-    const stream = bucket.openUploadStream(`package-${Date.now()}`, { contentType: img.mime });
-    stream.on('error', reject);
-    stream.on('finish', () => resolve(stream.id as mongoose.mongo.ObjectId));
-    stream.end(img.data);
-  });
-  res.status(201).json({ gridId: String(gridId), mime: img.mime });
-}));
+/* ---- v4.14: subscription endpoints removed — commission dues live in /dues/admin/* ---- */
 
 /* ---- Smart statistics (charts on the dashboard) ---- */
 router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
@@ -490,7 +310,7 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
     dayKeys.push(d.toISOString().slice(0, 10));
   }
 
-  const [usersByDay, offersByDay, subsApproved] = await Promise.all([
+  const [usersByDay, offersByDay, settledDues] = await Promise.all([
     User.aggregate([
       // the administration account is not a real app user — never count it in stats
       { $match: { createdAt: { $gte: since }, isSuperAdmin: { $ne: true } } },
@@ -500,7 +320,8 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
       { $match: { createdAt: { $gte: since } } },
       { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 }, amount: { $sum: '$amountDA' } } },
     ]),
-    Subscription.find({ status: { $in: ['active', 'expired'] }, decidedAt: { $ne: null } }).select('amountDA packageKey packageName decidedAt createdAt'),
+    // v4.14 — platform revenue = settled commission receipts (not subscriptions)
+    MonthlySettlement.find({}).select('amountDA paidAt'),
   ]);
 
   const series = (rows: { _id: string; count: number }[]) => dayKeys.map((d) => ({ date: d, count: rows.find((r) => r._id === d)?.count || 0 }));
@@ -508,21 +329,17 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
   const offersSeries = (offersByDay as any[]).length ? series(offersByDay as any) : dayKeys.map((d) => ({ date: d, count: 0 }));
   const offersAmountSeries = dayKeys.map((d) => ({ date: d, amount: (offersByDay as any[]).find((r) => r._id === d)?.amount || 0 }));
 
-  // revenue: approved subscriptions grouped by day of decision
+  // revenue: settled commissions grouped by the day the administration marked them paid
   const revenueSeries = dayKeys.map((d) => {
-    const daySubs = subsApproved.filter((s) => (s.decidedAt || s.createdAt).toISOString().slice(0, 10) === d);
-    return { date: d, amount: daySubs.reduce((acc, s) => acc + (s.amountDA || 0), 0), count: daySubs.length };
+    const dayDues = settledDues.filter((s: any) => new Date(s.paidAt || s.createdAt).toISOString().slice(0, 10) === d);
+    return { date: d, amount: dayDues.reduce((acc: number, s: any) => acc + (s.amountDA || 0), 0), count: dayDues.length };
   });
 
-  const [byCategory, byWilaya, subsByStatus, subsByPackage, offerAgg, usersCount, roleSplit, idSplit, bannedCount, subsActive, complaintSplit, offerStatusSplit] = await Promise.all([
+  const dues = await duesSummary();
+
+  const [byCategory, byWilaya, offerAgg, usersCount, roleSplit, idSplit, bannedCount, complaintSplit, offerStatusSplit] = await Promise.all([
     Offer.aggregate([{ $group: { _id: '$categoryKey', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
     Offer.aggregate([{ $group: { _id: '$wilaya', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 8 }]),
-    Subscription.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-    Subscription.aggregate([
-      { $match: { status: { $in: ['active', 'expired'] }, amountDA: { $gt: 0 } } },
-      { $group: { _id: '$packageKey', count: { $sum: 1 }, DA: { $sum: '$amountDA' } } },
-      { $sort: { count: -1 } },
-    ]),
     Offer.aggregate([
       { $group: { _id: null, avg: { $avg: '$amountDA' }, done: { $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] } }, cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }, total: { $sum: 1 }, budget: { $sum: '$amountDA' } } },
     ]),
@@ -531,14 +348,11 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
     User.aggregate([{ $match: { isSuperAdmin: { $ne: true } } }, { $group: { _id: { $ifNull: ['$role', 'seeker'] }, count: { $sum: 1 } } }]),
     User.aggregate([{ $match: { isSuperAdmin: { $ne: true } } }, { $group: { _id: { $ifNull: ['$idVerified', 'none'] }, count: { $sum: 1 } } }]),
     User.countDocuments({ isBanned: true, isSuperAdmin: { $ne: true } }),
-    Subscription.countDocuments({ status: 'active' }),
     Complaint.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
     Offer.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
   ]);
 
   const a = offerAgg[0] || { avg: 0, done: 0, cancelled: 0, total: 0, budget: 0 };
-  const statusMap: Record<string, number> = {};
-  for (const r of subsByStatus as any[]) statusMap[r._id] = r.count;
   const revenueTotal = revenueSeries.reduce((acc, r) => acc + r.amount, 0);
 
   // v4.5 helper — turn [{_id, count}] aggregates into named maps
@@ -552,8 +366,8 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
     revenueTotalDA: revenueTotal,
     byCategory: (byCategory as any[]).map((r) => ({ key: r._id, count: r.count })),
     byWilaya: (byWilaya as any[]).map((r) => ({ wilaya: r._id || '—', count: r.count })),
-    subsByStatus: statusMap,
-    subsByPackage: (subsByPackage as any[]).map((r) => ({ key: r._id || 'legacy', count: r.count, DA: r.DA })),
+    // v4.14 — commission model replaces the subscription charts
+    dues: { unpaidUsers: dues.unpaidUsers, unpaidDA: dues.unpaidDA, duesDA: dues.duesDA, monthCommissionsDA: dues.monthCommissionsDA },
     smart: {
       avgOfferDA: Math.round(a.avg || 0),
       totalBudgetDA: a.budget || 0,
@@ -566,43 +380,13 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
       idStatus: toMap(idSplit as any[]),
       offersByStatus: toMap(offerStatusSplit as any[]),
       usersBanned: bannedCount,
-      subsActive,
       complaints: toMap(complaintSplit as any[]),
       tasksDone: a.done || 0,
     },
   });
 }));
 
-router.post('/subscriptions/:id/decide', asyncH(async (req: AuthRequest, res) => {
-  const { action } = z.object({ action: z.enum(['approve', 'reject']) }).parse(req.body);
-  const sub = await Subscription.findById(req.params.id);
-  if (!sub) { res.status(404).json({ error: 'Subscription not found', code: 'NOT_FOUND' }); return; }
-  if (sub.status !== 'pending') { res.status(400).json({ error: 'Subscription already decided', code: 'BAD_STATE' }); return; }
-  const settings = await Settings.findOne({ key: 'main' });
-  // honor the package the user subscribed to; fall back to the legacy plan
-  const durationDays = sub.durationDays || settings?.subscription.durationDays || 30;
-
-  if (action === 'approve') {
-    await Subscription.updateMany({ user: sub.user, status: 'active', _id: { $ne: sub._id } }, { $set: { status: 'expired' } });
-    sub.status = 'active';
-    sub.startsAt = new Date();
-    sub.endsAt = new Date(Date.now() + durationDays * 24 * 3600 * 1000);
-  } else {
-    sub.status = 'rejected';
-  }
-  sub.decidedBy = req.user!._id;
-  sub.decidedAt = new Date();
-  await sub.save();
-  // v4.7 — a live subscription clears the "disabled by administration" state right away
-  if (action === 'approve') await User.updateOne({ _id: sub.user }, { $set: { subLocked: false } });
-  await notifyUsers([sub.user], action === 'approve' ? 'subscription_confirmed' : 'subscription_rejected', {
-    subscriptionId: String(sub._id),
-    amountDA: sub.amountDA,
-    endsAt: sub.endsAt ? sub.endsAt.toISOString() : undefined,
-  });
-  const populated = await Subscription.findById(sub._id).populate('user', 'name email phone');
-  res.json(populated);
-}));
+/* ---- v4.14: subscription decide endpoint removed (was /subscriptions/:id/decide) ---- */
 
 /* ---- Settings ---- */
 const labelSchema = z.object({ ar: z.string().max(80), fr: z.string().max(80), en: z.string().max(80) });
@@ -618,6 +402,8 @@ const packageSchema = z.object({
 
 router.put('/settings', asyncH(async (req: AuthRequest, res) => {
   const body = z.object({
+    // v4.14 — commission rate (percentage of each DONE task, charged to the executor)
+    commissionPercent: z.number().min(0).max(50).optional(),
     subscription: z.object({
       isEnabled: z.boolean().optional(),
       priceDA: z.number().min(0).max(999999999).optional(),
@@ -638,6 +424,7 @@ router.put('/settings', asyncH(async (req: AuthRequest, res) => {
 
   let settings = await Settings.findOne({ key: 'main' });
   if (!settings) settings = await Settings.create({ key: 'main' });
+  if (body.commissionPercent !== undefined) settings.commissionPercent = body.commissionPercent;
   if (body.subscription) Object.assign(settings.subscription, body.subscription);
   if (body.contact) settings.contact = { ...settings.contact, ...body.contact };
   if (body.categories) settings.categories = body.categories;
@@ -675,7 +462,7 @@ router.post('/purge-test-data', asyncH(async (req: AuthRequest, res) => {
   if (process.env.NODE_ENV === 'production') { res.status(403).json({ error: 'Disabled in production', code: 'FORBIDDEN' }); return; }
   await User.deleteMany({ isSuperAdmin: { $ne: true } });
   await Offer.deleteMany({});
-  await Subscription.deleteMany({});
+  await MonthlySettlement.deleteMany({});
   await Complaint.deleteMany({});
   await Notification.deleteMany({});
   await (await import('../models/pushsubscription.model')).PushSubscription.deleteMany({});

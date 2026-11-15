@@ -19,6 +19,9 @@ export interface ISettings extends Document {
     maxActiveOffers: number;
     paymentInstructions: string;
   };
+  // v4.14 — commission model (replaces subscriptions): percentage of each DONE
+  // task's agreed amount, paid by the executor, settled monthly
+  commissionPercent: number;
   packages: ISubPackage[];
   categories: { key: string; label: { ar: string; fr: string; en: string; tr?: string; es?: string; it?: string; de?: string; ru?: string; zh?: string }; icon: string }[];
   // v4.6 — "contact us" page, edited from the admin account
@@ -85,6 +88,8 @@ const SettingsSchema = new Schema<ISettings>(
           'ادفع مبلغ الاشتراك عبر BaridiMob أو في مكتب البريد على حساب CCP الخاص بالمنصة، ثم أدخل رقم/مرجع عملية الدفع هنا. سيؤكد المشرف اشتراكك بعد التحقق. | Payez via BaridiMob ou au bureau de poste sur le compte CCP, puis saisissez la référence du paiement. Le super admin confirmera votre abonnement. | Pay via BaridiMob or at the post office, then enter the payment reference. The super admin will confirm your subscription.',
       },
     },
+    // v4.14 — commission rate charged to the executor on every completed task
+    commissionPercent: { type: Number, default: 15, min: 0, max: 50 },
     packages: { type: [{ key: String, name: { ar: String, fr: String, en: String }, priceDA: Number, durationDays: Number, maxActiveOffers: Number, active: Boolean, imageGridId: String }], default: DEFAULT_PACKAGES },
     // v4.6 — "contact us" page, edited from the admin account
     contact: {

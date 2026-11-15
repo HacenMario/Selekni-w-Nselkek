@@ -2,11 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Offer } from '../models/offer.model';
-import { Subscription } from '../models/subscription.model';
 import { User } from '../models/user.model';
 import { auth, AuthRequest } from '../middleware/auth';
 import { asyncH } from '../middleware/error';
-import { getSettings, isSubscribed } from '../services/settings.service';
+import { getSettings } from '../services/settings.service';
 import { decodeImages, MAX_IMAGES } from '../utils/images';
 import { notifyUsers } from '../services/notification.service';
 import { Notification } from '../models/notification.model';
@@ -118,29 +117,18 @@ async function validateVideos(ownerId: string, videos: { gridId: string; mime: s
   return { docs, error: undefined };
 }
 
-/** Owner: create offer (gated by subscription + max active offers). */
+/** Owner: create offer — v4.14 commission model: NO subscription required;
+ *  a platform-wide cap on concurrently active offers stays as anti-spam. */
 router.post('/', auth, asyncH(async (req: AuthRequest, res) => {
   if (req.user!.role !== 'owner') { res.status(403).json({ error: 'Switch to owner role to post offers', code: 'ROLE_OWNER_REQUIRED' }); return; }
   const body = createSchema.parse(req.body);
   const settings = await getSettings();
 
-  if (settings.subscription.isEnabled && !req.user!.isSuperAdmin) {
-    // the super admin account never needs a subscription (full platform access)
-    if (req.user!.subLocked) {
-      res.status(403).json({ error: 'Your subscription was disabled by the administration', code: 'SUB_LOCKED' });
-      return;
-    }
-    // lazy expiry
-    await Subscription.updateMany({ user: req.user!._id, status: 'active', endsAt: { $lt: new Date() } }, { $set: { status: 'expired' } });
-    const active = await Subscription.findOne({ user: req.user!._id, status: 'active', endsAt: { $gt: new Date() } });
-    if (!active) { res.status(402).json({ error: 'Active subscription required to post offers', code: 'SUBSCRIPTION_REQUIRED' }); return; }
-    const activeOffers = await Offer.countDocuments({ owner: req.user!._id, status: { $in: ['open', 'assigned', 'awaiting_confirmation'] } });
-    // the user's own package sets the limit; fall back to the global plan
-    const maxOffers = active.maxActiveOffers ?? settings.subscription.maxActiveOffers;
-    if (activeOffers >= maxOffers) {
-      res.status(403).json({ error: `Maximum ${maxOffers} active offers reached`, code: 'MAX_OFFERS_REACHED' });
-      return;
-    }
+  const activeOffers = await Offer.countDocuments({ owner: req.user!._id, status: { $in: ['open', 'assigned', 'awaiting_confirmation'] } });
+  const maxOffers = Math.max(1, settings.subscription.maxActiveOffers || 3);
+  if (activeOffers >= maxOffers) {
+    res.status(403).json({ error: `Maximum ${maxOffers} active offers reached`, code: 'MAX_OFFERS_REACHED' });
+    return;
   }
 
   const categoryExists = settings.categories.some((c) => c.key === body.categoryKey);

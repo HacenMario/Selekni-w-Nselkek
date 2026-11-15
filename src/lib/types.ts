@@ -24,7 +24,6 @@ export interface User {
   profileComplete?: boolean;
   isSuperAdmin: boolean;
   isBanned: boolean;
-  subLocked?: boolean;
   tasksDone?: number;
   tasksCompleted?: number;
   bloodType?: BloodType | '';
@@ -88,16 +87,6 @@ export interface Offer {
   createdAt: string;
 }
 
-export interface SubPackage {
-  key: string;
-  name: { ar: string; fr: string; en: string; tr?: string; es?: string; it?: string; de?: string; ru?: string; zh?: string };
-  priceDA: number;
-  durationDays: number;
-  maxActiveOffers: number;
-  active: boolean;
-  imageGridId?: string;
-}
-
 export interface Settings {
   subscription: {
     isEnabled: boolean;
@@ -106,36 +95,61 @@ export interface Settings {
     maxActiveOffers: number;
     paymentInstructions: string;
   };
-  packages?: SubPackage[];
+  // v4.14 — commission model (replaces subscriptions): % of each DONE task charged to the executor
+  commissionPercent?: number;
+  packages?: unknown[];
   categories: { key: string; label: { ar: string; fr: string; en: string; tr?: string; es?: string; it?: string; de?: string; ru?: string; zh?: string }; icon: string }[];
   // v4.6 — "contact us" page, edited from the admin account
   contact?: { phone: string; email: string; instagram: string; address: string };
 }
 
-export interface Subscription {
-  _id: string;
-  user: string | { _id: string; name: string; email: string; phone: string; role?: Role; subLocked?: boolean; isSuperAdmin?: boolean };
-  status: 'pending' | 'active' | 'rejected' | 'expired';
-  packageKey?: string;
-  packageName?: { ar: string; fr: string; en: string };
-  amountDA: number;
-  durationDays?: number;
-  maxActiveOffers?: number;
-  reference: string;
-  proofImage?: { _id: string; mime: string; size: number };
-  startsAt?: string;
-  endsAt?: string;
-  decidedAt?: string;
-  createdAt: string;
+/* ---- v4.14 — commission dues (replaces the Subscription types) ---- */
+
+/** One month of a user's executed tasks: earnings, platform commission, settlement state. */
+export interface DuesMonth {
+  month: string; // 'YYYY-MM'
+  tasksCount: number;
+  earnedDA: number;
+  commissionDA: number;
+  paidDA: number;
+  unpaidDA: number;
+  paidAt: string | null;
+  note?: string;
 }
 
-export interface ExpiringSub {
-  _id: string;
-  user: { _id: string; name: string; email?: string; phone?: string; role?: Role } | string;
-  endsAt: string;
-  packageKey?: string;
-  amountDA: number;
-  daysLeft: number;
+export interface DuesTotals {
+  tasks: number;
+  earnedDA: number;
+  // /dues/mine calls it commissionDA, the admin summary calls it duesDA — same figure
+  commissionDA?: number;
+  duesDA?: number;
+  paidDA: number;
+  unpaidDA: number;
+}
+
+export interface MyDues {
+  rate: number;
+  months: DuesMonth[];
+  totals: DuesTotals;
+  contact: { phone: string; email: string };
+}
+
+/** One executor row in the admin dues tab (aggregated over the selected month or all). */
+export interface AdminDuesRow {
+  user: { _id: string; name: string; phone: string; email: string; role?: Role };
+  tasksCount: number;
+  earnedDA: number;
+  duesDA: number;
+  paidDA: number;
+  unpaidDA: number;
+}
+
+export interface AdminDuesSummary {
+  rate: number;
+  month: string;
+  months: { month: string; tasks: number }[];
+  items: AdminDuesRow[];
+  totals: DuesTotals;
 }
 
 export interface Complaint {
@@ -161,9 +175,9 @@ export interface AppNotification {
     | 'offer_awaiting'
     | 'offer_done'
     | 'offer_cancelled'
-    | 'subscription_pending'
-    | 'subscription_confirmed'
-    | 'subscription_rejected'
+    // v4.14 — commission model
+    | 'dues_reminder'
+    | 'dues_paid'
     | 'id_pending'
     | 'complaint_new'
     | 'complaint_resolved'
@@ -176,7 +190,8 @@ export interface AppNotification {
     actorName?: string;
     title?: string;
     body?: string;
-    reference?: string;
+    month?: string;
+    tasksCount?: number;
     subject?: string;
     resolution?: string;
     complaintId?: string;
@@ -194,9 +209,9 @@ export interface Stats {
 export interface AdminDashboard {
   users: { total: number; owners: number; seekers: number; idPending?: number; verified?: number; banned?: number };
   offers: { open: number; assigned: number; awaiting: number; done: number; cancelled: number };
-  subscriptions: { pending: number; active: number };
+  // v4.14 — commission dues replace the subscriptions block
+  dues: { rate?: number; unpaidUsers: number; unpaidDA: number; duesDA: number; monthCommissionsDA: number };
   complaintsOpen: number;
-  expiringSubs: ExpiringSub[];
   recentUsers: User[];
 }
 
@@ -208,8 +223,8 @@ export interface AdminStats {
   revenueTotalDA: number;
   byCategory: { key: string; count: number }[];
   byWilaya: { wilaya: string; count: number }[];
-  subsByStatus: Record<string, number>;
-  subsByPackage: { key: string; count: number; DA: number }[];
+  // v4.14 — commission dues replace the subscription charts
+  dues: { unpaidUsers: number; unpaidDA: number; duesDA: number; monthCommissionsDA: number };
   smart: {
     avgOfferDA: number;
     totalBudgetDA: number;
@@ -222,7 +237,6 @@ export interface AdminStats {
     idStatus: Record<string, number>;
     offersByStatus: Record<string, number>;
     usersBanned: number;
-    subsActive: number;
     complaints: Record<string, number>;
     tasksDone: number;
   };

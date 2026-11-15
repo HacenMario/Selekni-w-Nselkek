@@ -386,7 +386,7 @@ export function AuthScreen() {
           >
             <GoogleIcon /> {t('continueWithGoogle')}
           </button>
-          <p className="text-xs text-muted-foreground text-center pt-1">{t('subscriptionFree')}</p>
+          <p className="text-xs text-muted-foreground text-center pt-1">{t('commissionNote')}</p>
           <p className="text-[11px] font-semibold text-muted-foreground/80 text-center pt-3">{t('madeBy')}</p>
         </div>
       </div>

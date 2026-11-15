@@ -14,8 +14,8 @@ router.get('/', asyncH(async (_req, res) => {
       maxActiveOffers: s.subscription.maxActiveOffers,
       paymentInstructions: s.subscription.paymentInstructions,
     },
-    // public: only active packages are visible
-    packages: (s.packages || []).filter((p) => p.active),
+    // v4.14 — commission model: public so the offer sheet can show the executor's net
+    commissionPercent: typeof s.commissionPercent === 'number' ? s.commissionPercent : 15,
     categories: s.categories,
     // v4.6 — contact info shown on the "contact us" page (edited from the admin account)
     contact: s.contact || { phone: '', email: '', instagram: '', address: '' },

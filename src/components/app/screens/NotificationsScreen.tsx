@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   BadgeCheck, BellRing, CheckCheck, Gavel, Handshake, Hourglass, IdCard, Inbox, LifeBuoy,
-  Megaphone, ShieldCheck, Trash2, Wallet, Wrench, XCircle,
+  Megaphone, Trash2, Wrench, XCircle,
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -21,7 +21,6 @@ export function NotificationsScreen() {
   const openOfferDetail = useApp((s) => s.openOfferDetail);
   const setTab = useApp((s) => s.setTab);
   const setAdminTab = useApp((s) => s.setAdminTab);
-  const setAdminSubsFilter = useApp((s) => s.setAdminSubsFilter);
   const qc = useQueryClient();
   const [clearOpen, setClearOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -79,14 +78,10 @@ export function NotificationsScreen() {
         setTab(user?.role === 'owner' ? 'offers' : 'tasks');
         if (offerId) openOfferDetail(offerId);
         break;
-      case 'subscription_pending':
-        // administration: jump straight to pending subscription requests
-        if (user?.isSuperAdmin) { setTab('admin'); setAdminTab('subs'); setAdminSubsFilter('pending'); break; }
-        setTab('profile');
-        break;
-      case 'subscription_confirmed':
-      case 'subscription_rejected':
-        setTab('profile');
+      case 'dues_reminder':
+      case 'dues_paid':
+        // v4.14 — commission dues: open the dues screen (both messages)
+        setTab('dues');
         break;
       case 'id_pending':
         // administration: straight to the users tab for the ID-card review
@@ -215,9 +210,9 @@ function NotifIcon({ type, className }: { type: string; className?: string }) {
     case 'offer_awaiting': return <Hourglass className={`${className} text-amber-500`} />;
     case 'offer_done': return <BadgeCheck className={`${className} text-emerald-600`} />;
     case 'offer_cancelled': return <XCircle className={`${className} text-rose-500`} />;
-    case 'subscription_pending': return <Wallet className={`${className} text-sky-600`} />;
-    case 'subscription_confirmed': return <ShieldCheck className={`${className} text-emerald-600`} />;
-    case 'subscription_rejected': return <XCircle className={`${className} text-rose-500`} />;
+    // v4.14 — commission dues notifications
+    case 'dues_reminder': return <Hourglass className={`${className} text-amber-500`} />;
+    case 'dues_paid': return <BadgeCheck className={`${className} text-emerald-600`} />;
     case 'id_pending': return <IdCard className={`${className} text-amber-600`} />;
     case 'complaint_new': return <Gavel className={`${className} text-amber-600`} />;
     case 'complaint_resolved': return <LifeBuoy className={`${className} text-emerald-600`} />;
@@ -242,13 +237,10 @@ function notifText(n: AppNotification, t: (k: string, p?: Record<string, string 
     case 'offer_awaiting': return t('notifOfferAwaitingBody', { actor, title: String(d.offerTitle || '') });
     case 'offer_done': return t('notifOfferDoneBody', { title: String(d.offerTitle || ''), amount: Number(d.amountDA || 0).toLocaleString('fr-DZ') });
     case 'offer_cancelled': return t('notifOfferCancelledBody', { title: String(d.offerTitle || '') });
-    case 'subscription_pending':
-      // administration gets a professional, action-oriented message
-      if (isAdmin) return t('notifAdminSubNew', { actor, amount: Number(d.amountDA || 0).toLocaleString('fr-DZ'), reference: String(d.reference || '') });
-      return t('notifSubPendingBody', { actor, reference: String(d.reference || '') });
+    // v4.14 — commission dues notifications (rendered in the reader's language)
+    case 'dues_reminder': return t('notifDuesReminderBody', { amount: Number(d.amountDA || 0).toLocaleString('fr-DZ'), month: String(d.month || '') });
+    case 'dues_paid': return t('notifDuesPaidBody', { amount: Number(d.amountDA || 0).toLocaleString('fr-DZ'), month: String(d.month || '') });
     case 'id_pending': return t('notifAdminIdNew', { actor });
-    case 'subscription_confirmed': return t('notifSubConfirmedBody');
-    case 'subscription_rejected': return t('notifSubRejectedBody');
     case 'complaint_new': return t('notifComplaintNewBody', { actorName: actor, subject: String(d.subject || '') });
     case 'complaint_resolved': return t('notifComplaintResolvedBody', { subject: String(d.subject || '') });
     // admin announcements carry per-language data — always render the reader's language

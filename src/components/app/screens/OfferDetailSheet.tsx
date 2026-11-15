@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LoaderCircle, MapPin, CalendarDays, ShieldCheck, MessageSquareWarning } from 'lucide-react';
+import { LoaderCircle, MapPin, CalendarDays, HandCoins, ShieldCheck, MessageSquareWarning } from 'lucide-react';
 import { toast } from 'sonner';
 import { ImageGallery } from '@/components/app/ImageGallery';
 import { UserCard } from '@/components/app/UserCard';
@@ -214,6 +214,23 @@ export function OfferDetailSheet() {
 
             {/* actions */}
             <div className="border-t p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-2 bg-background">
+              {/* v4.14 — transparency before committing: the executor sees the net after commission */}
+              {(() => {
+                const showNet =
+                  (offer.status === 'open' && !offer.viewerIsOwner) ||
+                  (['assigned', 'awaiting_confirmation'].includes(offer.status) && offer.viewerIsWorker);
+                if (!showNet) return null;
+                const rate = Math.min(50, Math.max(0, Math.round(settings?.commissionPercent ?? 15)));
+                const net = Math.round((offer.amountDA * (100 - rate)) / 100);
+                return (
+                  <div className="flex items-start gap-2 rounded-xl border bg-muted/40 px-3 py-2">
+                    <HandCoins className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span className="text-xs text-muted-foreground break-words leading-relaxed">
+                      {t('duesNetHint', { rate: String(rate), net: net.toLocaleString('fr-DZ') })}
+                    </span>
+                  </div>
+                );
+              })()}
               {offer.status === 'open' && !offer.viewerIsOwner && !offer.viewerIsWorker && (
                 <Button onClick={accept} disabled={!!busy} className="w-full h-12 rounded-xl font-bold text-base shadow-lg shadow-primary/25">
                   {busy === 'accept' && <LoaderCircle className="h-5 w-5 animate-spin" />}

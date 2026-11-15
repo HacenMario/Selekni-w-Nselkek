@@ -7,9 +7,10 @@ import { api, imageUrl } from '@/lib/api';
 import { Offer } from '@/lib/types';
 import { AmountPill, EmptyState, StatusBadge, timeAgo } from '@/components/app/ui-bits';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DuesStrip } from '@/components/app/screens/DuesScreen';
 import { BadgeCheck, Inbox } from 'lucide-react';
 
-/** Seeker's accepted tasks (assigned / awaiting / done). */
+/** Seeker's accepted tasks (assigned / awaiting / done) + the monthly dues strip (v4.14). */
 export function MyTasksScreen() {
   const { t } = useLang();
   const openOfferDetail = useApp((s) => s.openOfferDetail);
@@ -22,6 +23,8 @@ export function MyTasksScreen() {
 
   return (
     <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4 space-y-3">
+      {/* v4.14 — commission dues at a glance (tap → full dues screen) */}
+      <DuesStrip />
       {isLoading ? (
         [...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)
       ) : !tasks || tasks.items.length === 0 ? (

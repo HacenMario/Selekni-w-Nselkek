@@ -164,21 +164,6 @@ router.get(
   })
 );
 
-/** Public image of a subscription package (marketing content — no auth). */
-router.get('/package/:gridId', asyncH(async (req: AuthRequest, res: Response) => {
-  if (!/^[a-f0-9]{24}$/.test(req.params.gridId)) { res.status(400).json({ error: 'Bad id', code: 'BAD_ID' }); return; }
-  // the upload route stores package images in the `packageImages` bucket —
-  // the v4 serve route looked in `videos`, so uploaded images never resolved
-  const b = bucket('packageImages');
-  const files = await b.find({ _id: new mongoose.mongo.ObjectId(req.params.gridId) }).limit(1).toArray();
-  const file = files[0];
-  if (!file) { res.status(404).json({ error: 'Image not found', code: 'NOT_FOUND' }); return; }
-  res.set('Content-Type', file.contentType || 'image/jpeg');
-  res.set('Cache-Control', 'public, max-age=86400');
-  res.set('Content-Length', String(file.length));
-  const stream = b.openDownloadStream(file._id);
-  stream.on('error', () => res.end());
-  stream.pipe(res);
-}));
+/* ---- v4.14: /package/:gridId removed with the subscription packages ---- */
 
 export default router;
