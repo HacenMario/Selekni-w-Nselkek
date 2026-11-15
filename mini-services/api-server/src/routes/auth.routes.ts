@@ -173,7 +173,9 @@ const patchMeSchema = z.object({
   // a (re-)upload of the ID card resets verification to pending
   idCard: z.object({ mime: z.string(), dataBase64: z.string() }).optional(),
   role: z.enum(['owner', 'seeker']).optional(),
-  languages: z.array(z.enum(['ar', 'fr', 'en'])).min(1).max(3).optional(),
+  // v4.11 — all nine UI languages (the v1-era schema only accepted ar/fr/en max 3,
+  // so saving a profile with any newer language was rejected with VALIDATION)
+  languages: z.array(z.enum(['ar', 'fr', 'en', 'tr', 'es', 'it', 'de', 'ru', 'zh'])).min(1).max(9).optional(),
   interests: z.array(z.string().max(60)).max(20).optional(),
   // v4.9 — preferred interface accent color (violet/blue/cyan/teal/emerald/amber/orange/rose/pink/indigo)
   uiTheme: z.string().max(20).optional(),

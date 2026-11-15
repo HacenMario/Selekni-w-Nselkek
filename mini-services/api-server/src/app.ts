@@ -29,6 +29,18 @@ export function createApp(): express.Express {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'slekni-api', time: new Date().toISOString() }));
 
+  // v4.11 — friendly root: the API serves /api/* only; visiting the bare domain
+  // now confirms the deployment instead of showing the generic 404 JSON
+  app.get('/', (_req, res) => {
+    res.json({
+      ok: true,
+      service: 'Selekni w Nselkek — API',
+      developer: 'MADOUNINE Hacene',
+      health: '/api/health',
+      api: '/api/...',
+    });
+  });
+
   app.use('/api/auth', authRouter);
   app.use('/api/me', meRouter);
   app.use('/api/offers', offersRoutes);

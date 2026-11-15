@@ -104,6 +104,9 @@ export function ProfileScreen() {
         gender,
         bloodType: blood || undefined,
         ...(ageNum >= 12 && ageNum <= 100 ? { age: ageNum } : {}),
+        // v4.11 — persist the chosen interface languages with the account
+        // (they were only written to localStorage before, never sent to the server)
+        languages: enabledLangs,
       });
       setUser(updated);
       toast.success(t('profileUpdated'));
