@@ -14,7 +14,10 @@ interface LangCtx {
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-const ALL: Lang[] = ['ar', 'fr', 'en'];
+// v4.12 — the whitelist must always match the full i18n dictionary: the stale
+// v1-era hard-coded three rejected every newer language on hydration and
+// filtered the account's saved list back down to three on adoption
+const ALL: Lang[] = LANGS.map((l) => l.code);
 const DEFAULT: LangStore = { lang: 'ar', enabled: ALL };
 
 interface LangStore {
@@ -81,6 +84,20 @@ function adoptServerLanguages(languages: string[] | undefined): void {
   }
 }
 
+/* v4.12 — persist language toggles to the account right away (debounced):
+   the choice survives reloads and follows the user to any device without
+   waiting for the “update info” button; guests keep localStorage only */
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+function queueServerSync(): void {
+  if (typeof window === 'undefined') return;
+  if (!useApp.getState().user) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    api.patch('/me', { languages: getSnapshot().enabled }).catch(() => {});
+  }, 800);
+}
+
 /* ---- react context ---- */
 const Ctx = createContext<LangCtx | null>(null);
 
@@ -128,6 +145,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       } else {
         update({ enabled: [...s.enabled, l] });
       }
+      queueServerSync();
     },
     []
   );
