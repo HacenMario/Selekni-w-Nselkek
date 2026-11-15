@@ -1,0 +1,15 @@
+node_modules
+.next
+db/data
+db/mongod.log
+dev.log
+server.log
+*.log
+.zscripts
+agent-ctx
+upload
+download
+tests/tmp
+.DS_Store
+mini-services/api-server/node_modules
+mini-services/api-server/dev.log
