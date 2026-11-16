@@ -39,20 +39,21 @@ export async function compressImage(file: File): Promise<CompressedImage> {
   };
 }
 
-/** Square-cropped, compressed avatar for profile photos. */
+/** Compressed avatar for profile photos — v4.15 keeps the FULL aspect ratio
+ *  (no square crop): the picture must show complete inside its frame. */
 export async function compressAvatar(file: File): Promise<CompressedImage> {
   const dataUrl = await readAsDataUrl(file);
   const img = await loadImage(dataUrl);
-  // center square crop
-  const side = Math.min(img.width, img.height);
-  const sx = (img.width - side) / 2;
-  const sy = (img.height - side) / 2;
+  let { width, height } = img;
+  const scale = Math.min(1, AVATAR_DIM / Math.max(width, height));
+  width = Math.round(width * scale);
+  height = Math.round(height * scale);
 
   const canvas = document.createElement('canvas');
-  canvas.width = AVATAR_DIM;
-  canvas.height = AVATAR_DIM;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_DIM, AVATAR_DIM);
+  ctx.drawImage(img, 0, 0, width, height);
 
   let quality = 0.8;
   let out = canvas.toDataURL('image/jpeg', quality);

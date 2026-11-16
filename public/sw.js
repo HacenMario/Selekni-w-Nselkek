@@ -1,5 +1,5 @@
 /* Slekni service worker: web-push display + offline shell */
-const CACHE = 'slekni-v4-14';
+const CACHE = 'slekni-v4-15';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png?v=3', '/icons/icon-512.png?v=3'];
 
 self.addEventListener('install', (event) => {
@@ -47,6 +47,10 @@ const TITLES = {
   subscription_pending: { ar: 'طلب اشتراك جديد', fr: 'Nouvelle demande', en: 'New subscription request' },
   subscription_confirmed: { ar: 'تم تأكيد اشتراكك', fr: 'Abonnement confirmé', en: 'Subscription confirmed' },
   subscription_rejected: { ar: 'تم رفض اشتراكك', fr: 'Abonnement refusé', en: 'Subscription rejected' },
+  // v4.15 — dues payment-proof lifecycle
+  dues_proof_submitted: { ar: 'إثبات سداد جديد', fr: 'Nouveau justificatif', en: 'New payment proof' },
+  dues_proof_approved: { ar: 'تم تأكيد سداد مستحقاتك', fr: 'Paiement confirmé', en: 'Dues payment confirmed' },
+  dues_proof_rejected: { ar: 'تعذر تأكيد إثبات السداد', fr: 'Justificatif refusé', en: 'Payment proof rejected' },
   id_pending: { ar: 'طلب توثيق حساب جديد', fr: 'Nouvelle demande de vérification', en: 'New verification request' },
   complaint_new: { ar: 'شكوى جديدة', fr: 'Nouvelle réclamation', en: 'New complaint' },
   complaint_resolved: { ar: 'تمت معالجة شكواك', fr: 'Réclamation traitée', en: 'Your complaint was resolved' },
@@ -121,5 +125,17 @@ self.addEventListener('notificationclick', (event) => {
       }
       return self.clients.openWindow(offerId ? `/?offer=${offerId}` : '/');
     })
+  );
+});
+
+/* v4.15 — the browser rotated/revoked the push subscription in the background:
+   ask any open app window to rebuild and re-upload it (ensurePushSubscribed).
+   If the app is closed, the subscription is rebuilt on the next app start. */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) client.postMessage({ type: 'resubscribe-push' });
+      return Promise.resolve();
+    }).catch(() => {})
   );
 });

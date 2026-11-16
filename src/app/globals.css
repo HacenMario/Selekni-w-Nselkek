@@ -321,3 +321,14 @@ html:not(.dark) input:focus-visible,
 html:not(.dark) textarea:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 14%, transparent);
 }
+
+/* ── v4.15: the hint text inside empty fields disappears the moment the field
+      is focused for typing (and fades back when it is left empty again) ── */
+input::placeholder,
+textarea::placeholder {
+  transition: color 140ms ease;
+}
+input:focus::placeholder,
+textarea:focus::placeholder {
+  color: transparent;
+}

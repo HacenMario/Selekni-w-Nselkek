@@ -3,11 +3,13 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { Offer } from '../models/offer.model';
 import { MonthlySettlement, commissionRate } from '../models/commission.model';
+import { DuesPaymentProof } from '../models/duesproof.model';
 import { User } from '../models/user.model';
 import { auth, adminOnly, AuthRequest } from '../middleware/auth';
 import { asyncH } from '../middleware/error';
 import { getSettings } from '../services/settings.service';
-import { notifyUsers } from '../services/notification.service';
+import { notifyUsers, notifyAdmins } from '../services/notification.service';
+import { decodeAvatar } from '../utils/images';
 
 const router = Router();
 
@@ -69,12 +71,14 @@ async function duesForUser(userId: unknown, rate: number) {
 
 /* ---- Executor side ---- */
 
-/** My monthly dues as the task executor: per-month tasks / earnings / 15% / paid state. */
+/** My monthly dues as the task executor: per-month tasks / earnings / 15% / paid state,
+ *  the payment-proof status of each month, and the administration's payment coordinates. */
 router.get('/mine', auth, asyncH(async (req: AuthRequest, res) => {
   const settings = await getSettings();
   const rate = commissionRate(settings);
   const { items, totals } = await duesForUser(req.user!._id, rate);
-  // the administration's contact info so the executor knows where to pay
+  // the administration's contact info + official CCP/RIP so the executor knows where to pay
+  const dp: any = (settings as any).duesPayment || {};
   res.json({
     rate,
     months: items,
@@ -83,6 +87,12 @@ router.get('/mine', auth, asyncH(async (req: AuthRequest, res) => {
       phone: settings.contact?.phone || '',
       email: settings.contact?.email || '',
     },
+    // v4.15 — official payment coordinates (admin-editable in settings)
+    payment: {
+      ccp: dp.ccp || '',
+      ccpKey: dp.ccpKey || '',
+      rip: dp.rip || '',
+    },
     policy: {
       charge: 'on_completion', // commission charged when the owner confirms the task
       billing: 'monthly', // settled once a month
@@ -90,8 +100,167 @@ router.get('/mine', auth, asyncH(async (req: AuthRequest, res) => {
   });
 }));
 
+/** v4.15 — submit a payment proof for a month's dues: a receipt photo the
+ *  administration reviews before confirming the payment. */
+router.post('/proof', auth, asyncH(async (req: AuthRequest, res) => {
+  const body = z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/),
+    image: z.object({ mime: z.string(), dataBase64: z.string() }),
+    note: z.string().trim().max(300).optional(),
+  }).parse(req.body);
+  const settings = await getSettings();
+  const rate = commissionRate(settings);
+  // the month must actually have unsettled dues for THIS executor
+  const { items } = await duesForUser(req.user!._id, rate);
+  const target = items.find((m) => m.month === body.month);
+  if (!target) { res.status(404).json({ error: 'No dues recorded for this month', code: 'NO_MONTH' }); return; }
+  if (target.unpaidDA <= 0) { res.status(400).json({ error: 'This month is already fully settled', code: 'ALREADY_SETTLED' }); return; }
+
+  const { data: img, error } = decodeAvatar(body.image, 1500 * 1024, 'Payment proof image too large (max 1.5MB)');
+  if (error || !img) { res.status(400).json({ error: error || 'Invalid image', code: 'BAD_IMAGE' }); return; }
+
+  // one live proof per (user, month) — re-submitting replaces the previous one
+  const proof = await DuesPaymentProof.findOneAndUpdate(
+    { user: req.user!._id, month: body.month },
+    {
+      $set: {
+        user: req.user!._id,
+        month: body.month,
+        image: img.data,
+        imageMime: img.mime,
+        note: body.note || '',
+        status: 'pending',
+        reviewNote: '',
+        decidedBy: undefined,
+        decidedAt: undefined,
+      },
+    },
+    { upsert: true, new: true }
+  );
+  // let the administration know a receipt is waiting for review
+  notifyAdmins('dues_proof_submitted', {
+    offerId: null,
+    amountDA: target.unpaidDA,
+    month: body.month,
+    tasksCount: target.tasksCount,
+    actorName: req.user!.name,
+    userId: String(req.user!._id),
+    proofId: String(proof._id),
+  }).catch(() => {});
+  res.status(201).json({
+    _id: String(proof._id),
+    month: proof.month,
+    status: proof.status,
+    submittedAt: proof.createdAt,
+  });
+}));
+
+/** My payment proofs (status of each submission). */
+router.get('/proofs/mine', auth, asyncH(async (req: AuthRequest, res) => {
+  const proofs = await DuesPaymentProof.find({ user: req.user!._id })
+    .sort({ createdAt: -1 })
+    .select('-image')
+    .lean();
+  res.json({ items: proofs });
+}));
+
 /* ---- Administration side ---- */
 router.use('/admin', auth, adminOnly);
+
+/* ---- Administration: payment-proof review (v4.15) ---- */
+
+/** All payment proofs (optionally filtered by status) with the sender's public info. */
+router.get('/admin/proofs', asyncH(async (req: AuthRequest, res) => {
+  const status = String(req.query.status || '');
+  const filter: Record<string, unknown> = status ? { status } : {};
+  const items = await DuesPaymentProof.find(filter).sort({ createdAt: -1 }).limit(100).select('-image').lean();
+  const users = await User.find({ _id: { $in: items.map((p: any) => p.user) } }).select(PUB).lean();
+  const byId = new Map<string, any>(users.map((u: any) => [String(u._id), u]));
+  res.json({
+    items: items.map((p: any) => ({
+      ...p,
+      user: byId.get(String(p.user)) || null,
+    })),
+  });
+}));
+
+/** The proof photo itself — super admin only, never cached (privacy). */
+router.get('/admin/proofs/:id/image', asyncH(async (req: AuthRequest, res) => {
+  const proof = await DuesPaymentProof.findById(req.params.id).select('image imageMime status');
+  if (!proof || !proof.image?.length) { res.status(404).json({ error: 'Proof image not found', code: 'NOT_FOUND' }); return; }
+  res.set('Content-Type', proof.imageMime || 'image/jpeg');
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Length', String(proof.image.length));
+  res.end(proof.image);
+}));
+
+/** Approve a payment proof → records the settlement receipt automatically and
+ *  wipes the image from the database. */
+router.post('/admin/proofs/:id/approve', asyncH(async (req: AuthRequest, res) => {
+  const { note } = z.object({ note: z.string().trim().max(300).optional() }).parse(req.body || {});
+  const proof = await DuesPaymentProof.findById(req.params.id);
+  if (!proof) { res.status(404).json({ error: 'Proof not found', code: 'NOT_FOUND' }); return; }
+  if (proof.status !== 'pending') { res.status(400).json({ error: 'Proof already reviewed', code: 'BAD_STATE' }); return; }
+  const settings = await getSettings();
+  const rate = commissionRate(settings);
+  const months = await monthsForUser(proof.user);
+  const m = months.find((x) => x.month === proof.month);
+  const duesDA = m ? Math.round((m.earnedDA * rate) / 100) : 0;
+  if (!m || duesDA <= 0) { res.status(400).json({ error: 'No dues for this month anymore', code: 'NO_MONTH' }); return; }
+
+  proof.status = 'approved';
+  proof.reviewNote = note || '';
+  proof.decidedBy = req.user!._id;
+  proof.decidedAt = new Date();
+  proof.image = Buffer.alloc(0); // the receipt photo leaves the database on decision
+  proof.imageMime = '';
+  await proof.save();
+
+  // the approved proof IS the settlement receipt — mark the month paid
+  const settlement = await MonthlySettlement.findOneAndUpdate(
+    { user: proof.user, month: proof.month },
+    {
+      $set: {
+        user: proof.user,
+        month: proof.month,
+        amountDA: duesDA,
+        tasksCount: m.tasksCount,
+        note: note || 'Payment proof approved',
+        decidedBy: req.user!._id,
+        paidAt: new Date(),
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  notifyUsers([proof.user], 'dues_proof_approved', {
+    amountDA: settlement.amountDA,
+    month: proof.month,
+    tasksCount: m.tasksCount,
+    actorName: 'Slekni',
+  }).catch(() => {});
+  res.json({ ok: true, settlement });
+}));
+
+/** Reject a payment proof — the executor can re-submit a clearer receipt. */
+router.post('/admin/proofs/:id/reject', asyncH(async (req: AuthRequest, res) => {
+  const { reason } = z.object({ reason: z.string().trim().max(300).default('') }).parse(req.body || {});
+  const proof = await DuesPaymentProof.findById(req.params.id);
+  if (!proof) { res.status(404).json({ error: 'Proof not found', code: 'NOT_FOUND' }); return; }
+  if (proof.status !== 'pending') { res.status(400).json({ error: 'Proof already reviewed', code: 'BAD_STATE' }); return; }
+  proof.status = 'rejected';
+  proof.reviewNote = reason;
+  proof.decidedBy = req.user!._id;
+  proof.decidedAt = new Date();
+  proof.image = Buffer.alloc(0); // the receipt photo leaves the database on decision
+  proof.imageMime = '';
+  await proof.save();
+  notifyUsers([proof.user], 'dues_proof_rejected', {
+    month: proof.month,
+    actorName: 'Slekni',
+    reason,
+  }).catch(() => {});
+  res.json({ ok: true });
+}));
 
 /** Month picker data + per-user aggregation for the admin dues tab.
  *  `month` = 'YYYY-MM' narrows the rows to that month; '' aggregates everything. */

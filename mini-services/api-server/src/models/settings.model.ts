@@ -22,6 +22,15 @@ export interface ISettings extends Document {
   // v4.14 — commission model (replaces subscriptions): percentage of each DONE
   // task's agreed amount, paid by the executor, settled monthly
   commissionPercent: number;
+  // v4.15 — the administration's official payment coordinates shown to executors
+  // on the dues page (CCP/CCP key/RIP — pre-filled with the platform's account)
+  duesPayment: {
+    ccp: string;
+    ccpKey: string;
+    rip: string;
+  };
+  // v4.15 — self-healing web-push keys (generated once when env vars are absent)
+  vapid?: { publicKey?: string; privateKey?: string };
   packages: ISubPackage[];
   categories: { key: string; label: { ar: string; fr: string; en: string; tr?: string; es?: string; it?: string; de?: string; ru?: string; zh?: string }; icon: string }[];
   // v4.6 — "contact us" page, edited from the admin account
@@ -90,6 +99,16 @@ const SettingsSchema = new Schema<ISettings>(
     },
     // v4.14 — commission rate charged to the executor on every completed task
     commissionPercent: { type: Number, default: 15, min: 0, max: 50 },
+    // v4.15 — the administration's CCP/RIP coordinates where executors pay their dues
+    duesPayment: {
+      type: {
+        ccp: { type: String, default: '0040740276' },
+        ccpKey: { type: String, default: '57' },
+        rip: { type: String, default: '00799999004074027657' },
+      },
+      default: { ccp: '0040740276', ccpKey: '57', rip: '00799999004074027657' },
+    },
+    vapid: { type: { publicKey: String, privateKey: String }, default: {} },
     packages: { type: [{ key: String, name: { ar: String, fr: String, en: String }, priceDA: Number, durationDays: Number, maxActiveOffers: Number, active: Boolean, imageGridId: String }], default: DEFAULT_PACKAGES },
     // v4.6 — "contact us" page, edited from the admin account
     contact: {

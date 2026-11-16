@@ -13,3 +13,4 @@ tests/tmp
 .DS_Store
 mini-services/api-server/node_modules
 mini-services/api-server/dev.log
+core

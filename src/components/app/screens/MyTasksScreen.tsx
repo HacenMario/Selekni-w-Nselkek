@@ -8,7 +8,7 @@ import { Offer } from '@/lib/types';
 import { AmountPill, EmptyState, StatusBadge, timeAgo } from '@/components/app/ui-bits';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DuesStrip } from '@/components/app/screens/DuesScreen';
-import { BadgeCheck, Inbox } from 'lucide-react';
+import { BadgeCheck, ListChecks } from 'lucide-react';
 
 /** Seeker's accepted tasks (assigned / awaiting / done) + the monthly dues strip (v4.14). */
 export function MyTasksScreen() {
@@ -18,17 +18,18 @@ export function MyTasksScreen() {
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['accepted-tasks'],
     queryFn: () => api.get<{ items: Offer[] }>('/offers/accepted'),
-    refetchInterval: 25_000,
+    // v4.15 — silent 5-second refresh: statuses move without any spinner
+    refetchInterval: 5_000,
   });
 
   return (
     <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4 space-y-3">
-      {/* v4.14 — commission dues at a glance (tap → full dues screen) */}
+      {/* v4.14 — commission dues at a glance (tap → the dedicated dues page) */}
       <DuesStrip />
       {isLoading ? (
         [...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)
       ) : !tasks || tasks.items.length === 0 ? (
-        <EmptyState icon={Inbox} title={t('feedEmpty')} hint={t('feedEmptyHint')} />
+        <EmptyState icon={ListChecks} title={t('feedEmpty')} hint={t('feedEmptyHint')} />
       ) : (
         tasks.items.map((o, idx) => (
           <button

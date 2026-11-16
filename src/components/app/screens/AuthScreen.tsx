@@ -9,6 +9,7 @@ import { User, BLOOD_TYPES, BloodType } from '@/lib/types';
 import { compressAvatar, compressIdCard, CompressedImage } from '@/lib/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ClearInput } from '@/components/app/ClearableField';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LanguageMenu } from '@/components/app/LanguageMenu';
@@ -197,7 +198,7 @@ export function AuthScreen() {
           <TabsContent value="login" className="mt-5 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="lemail">{t('email')}</Label>
-              <Input id="lemail" type="email" inputMode="email" autoComplete="email" value={lemail} onChange={(e) => setLemail(e.target.value)} className="h-11 rounded-xl" placeholder="you@mail.com" />
+              <ClearInput id="lemail" type="email" inputMode="email" autoComplete="email" value={lemail} onChange={(e) => setLemail(e.target.value)} className="h-11 rounded-xl" placeholder="you@mail.com" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lpass">{t('password')}</Label>
@@ -261,16 +262,16 @@ export function AuthScreen() {
 
             <div className="space-y-1.5">
               <Label htmlFor="rname">{t('name')} *</Label>
-              <Input id="rname" value={rname} onChange={(e) => setRname(e.target.value)} className="h-11 rounded-xl" autoComplete="name" />
+              <ClearInput id="rname" value={rname} onChange={(e) => setRname(e.target.value)} className="h-11 rounded-xl" autoComplete="name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="remail">{t('email')} *</Label>
-                <Input id="remail" type="email" inputMode="email" value={remail} onChange={(e) => setRemail(e.target.value)} className="h-11 rounded-xl" autoComplete="email" />
+                <ClearInput id="remail" type="email" inputMode="email" value={remail} onChange={(e) => setRemail(e.target.value)} className="h-11 rounded-xl" autoComplete="email" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rphone">{t('phone')} *</Label>
-                <Input id="rphone" type="tel" inputMode="tel" value={rphone} onChange={(e) => setRphone(e.target.value)} className="h-11 rounded-xl" placeholder="05XXXXXXXX" autoComplete="tel" />
+                <ClearInput id="rphone" type="tel" inputMode="tel" value={rphone} onChange={(e) => setRphone(e.target.value)} className="h-11 rounded-xl" placeholder="05XXXXXXXX" autoComplete="tel" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -291,7 +292,7 @@ export function AuthScreen() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rage">{t('age')} *</Label>
-                <Input id="rage" type="number" inputMode="numeric" min={12} max={100} value={rage} onChange={(e) => setRage(e.target.value)} placeholder={t('agePlaceholder')} className="h-11 rounded-xl" />
+                <ClearInput id="rage" type="number" inputMode="numeric" min={12} max={100} value={rage} onChange={(e) => setRage(e.target.value)} placeholder={t('agePlaceholder')} className="h-11 rounded-xl" />
               </div>
             </div>
 

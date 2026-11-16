@@ -26,7 +26,7 @@ export function legalDoc(lang: Lang): LegalDoc {
 const LEGAL: Record<Lang, LegalDoc> = {
   ar: {
     title: 'شروط الاستخدام والخصوصية',
-    updated: 'آخر تحديث: نوفمبر 2025',
+    updated: 'آخر تحديث: نوفمبر 2026',
     intro: 'نرحّب بك في «سلكني ونسلكك». هذه الصفحة تشرح بالوضح القواعد التي تنظّم استخدامك للتطبيق، وكيف نتعامل مع بياناتك. استخدامك للتطبيق يعني موافقتك على ما يلي.',
     sections: [
       {
@@ -91,7 +91,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   fr: {
     title: "Conditions d'utilisation et Confidentialité",
-    updated: 'Dernière mise à jour : novembre 2025',
+    updated: 'Dernière mise à jour : novembre 2026',
     intro: 'Bienvenue sur « Selekni w Nselkek ». Cette page explique clairement les règles qui encadrent votre utilisation de l\'application et la manière dont vos données sont traitées. Utiliser l\'application vaut acceptation de ce qui suit.',
     sections: [
       {
@@ -156,7 +156,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   en: {
     title: 'Terms of Use & Privacy',
-    updated: 'Last updated: November 2025',
+    updated: 'Last updated: November 2026',
     intro: 'Welcome to "Selekni w Nselkek". This page clearly explains the rules governing your use of the app and how your data is handled. Using the app means you accept the following.',
     sections: [
       {
@@ -221,7 +221,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   tr: {
     title: 'Kullanım Koşulları ve Gizlilik',
-    updated: 'Son güncelleme: Kasım 2025',
+    updated: 'Son güncelleme: Kasım 2026',
     intro: '"Selekni w Nselkek" uygulamasına hoş geldiniz. Bu sayfa, uygulamayı kullanımınızı düzenleyen kuralları ve verilerinizle nasıl işlem yapıldığını açıkça anlatır. Uygulamayı kullanmak, aşağıdakileri kabul etmek anlamına gelir.',
     sections: [
       {
@@ -286,7 +286,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   es: {
     title: 'Términos de uso y Privacidad',
-    updated: 'Última actualización: noviembre de 2025',
+    updated: 'Última actualización: noviembre de 2026',
     intro: 'Bienvenido a «Selekni w Nselkek». Esta página explica con claridad las reglas que rigen el uso de la aplicación y cómo se tratan tus datos. Usar la aplicación implica aceptar lo siguiente.',
     sections: [
       {
@@ -351,7 +351,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   it: {
     title: 'Termini d\'uso e Privacy',
-    updated: 'Ultimo aggiornamento: novembre 2025',
+    updated: 'Ultimo aggiornamento: novembre 2026',
     intro: 'Benvenuto su «Selekni w Nselkek». Questa pagina spiega in modo chiaro le regole che disciplinano l\'uso dell\'app e come vengono trattati i tuoi dati. Usare l\'app significa accettare quanto segue.',
     sections: [
       {
@@ -416,7 +416,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   de: {
     title: 'Nutzungsbedingungen und Datenschutz',
-    updated: 'Stand: November 2025',
+    updated: 'Stand: November 2026',
     intro: 'Willkommen bei „Selekni w Nselkek". Diese Seite erläutert klar die Regeln für die Nutzung der App und den Umgang mit Ihren Daten. Die Nutzung der App bedeutet die Zustimmung zu Folgendem.',
     sections: [
       {
@@ -481,7 +481,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   ru: {
     title: 'Условия использования и конфиденциальность',
-    updated: 'Обновлено: ноябрь 2025 г.',
+    updated: 'Обновлено: ноябрь 2026 г.',
     intro: 'Добро пожаловать в «Selekni w Nselkek». Эта страница ясно объясняет правила пользования приложением и порядок обработки ваших данных. Использование приложения означает согласие со следующим.',
     sections: [
       {
@@ -546,7 +546,7 @@ const LEGAL: Record<Lang, LegalDoc> = {
   },
   zh: {
     title: '使用条款与隐私政策',
-    updated: '最近更新：2025 年 11 月',
+    updated: '最近更新：2026 年 11 月',
     intro: '欢迎使用「Selekni w Nselkek」。本页清楚说明使用本应用的规则以及我们如何处理您的数据。继续使用本应用即表示您接受以下内容。',
     sections: [
       {

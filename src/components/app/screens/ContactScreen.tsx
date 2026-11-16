@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { Settings } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ClearInput } from '@/components/app/ClearableField';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowRight, Instagram, Mail, MapPin, MessageSquarePlus, Phone, Send, ShieldAlert } from 'lucide-react';
@@ -118,7 +119,7 @@ export function ContactScreen({ onClose }: { onClose?: () => void }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cphone">{t('phone')} — {t('contactUs')}</Label>
-            <Input
+            <ClearInput
               id="cphone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -132,7 +133,7 @@ export function ContactScreen({ onClose }: { onClose?: () => void }) {
           </div>
           <div className="space-y-1.5">
             <Label>{t('contactSubject')} *</Label>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} className="h-11 rounded-xl" />
+            <ClearInput value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} className="h-11 rounded-xl" />
           </div>
           <div className="space-y-1.5">
             <Label>{t('contactMessage')} *</Label>

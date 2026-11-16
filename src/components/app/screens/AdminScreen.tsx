@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApp, AdminTab } from '@/store/app';
 import { useLang } from '@/lib/language-context';
-import { api, idCardUrl } from '@/lib/api';
+import { api, idCardUrl, mediaUrl } from '@/lib/api';
 import { badgeDelta, getClicked, markClicked, markTabSeen } from '@/lib/admin-badges';
-import { AdminDashboard, AdminDuesRow, AdminDuesSummary, AdminStats, Complaint, DuesMonth, MyDues, Offer, Paged, PublicUser, Settings, User } from '@/lib/types';
+import { AdminDashboard, AdminDuesRow, AdminDuesSummary, AdminStats, Complaint, DuesMonth, DuesProof, MyDues, Offer, Paged, PublicUser, Settings, User } from '@/lib/types';
 import { AmountPill, Pager, StatusBadge, timeAgo } from '@/components/app/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,9 +19,9 @@ import { wilayaLabel } from '@/lib/wilayas';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
-  BadgeCheck, Ban, BarChart3, Check, ClipboardList, Coins, Crown, Droplets, Gavel, HandCoins, Handshake, Hourglass, IdCard, LoaderCircle,
-  LayoutDashboard, MapPin, Megaphone, Pencil, Phone, Send, Settings2,
-  TrendingUp, Trash2, Users, UsersRound, Wallet, Wrench, X,
+  BadgeCheck, Ban, BarChart3, Check, ClipboardList, Coins, Crown, Droplets, Gavel, HandCoins, Handshake, Hourglass, IdCard, ImagePlus, LoaderCircle,
+  LayoutDashboard, MapPin, Megaphone, Pencil, Phone, Send, Settings2, ShieldCheck, Wallet, X,
+  TrendingUp, Trash2, Users, UsersRound, Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -106,13 +106,21 @@ function TabBadge({ count }: { count: number }) {
 
 function DashboardTab() {
   const { t } = useLang();
+  const setAdminTab = useApp((s) => s.setAdminTab);
   const { data } = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => api.get<AdminDashboard>('/admin/dashboard'),
-    refetchInterval: 30_000,
+    refetchInterval: 20_000,
   });
 
   if (!data) return <Spinner />;
+  const switchTabFrom = (tab: AdminTab) => setAdminTab(tab);
+
+  /** Share of the commission that has actually been collected (0-100). */
+  function duesCollectionPct(d: AdminDashboard['dues']): number {
+    if (!d.duesDA || d.duesDA <= 0) return 100;
+    return Math.min(100, Math.max(0, Math.round(((d.duesDA - d.unpaidDA) / d.duesDA) * 100)));
+  }
 
   return (
     <div className="space-y-5">
@@ -136,6 +144,33 @@ function DashboardTab() {
         <Kpi icon={BadgeCheck} label={t('statusDone')} value={data.offers.done} />
       </div>
 
+      {/* v4.15 — dues control rings: collection, unpaid share, month share */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <RingStat
+          pct={duesCollectionPct(data.dues)}
+          icon={BadgeCheck}
+          label={t('duesRingCollected')}
+          value={`${duesCollectionPct(data.dues)}%`}
+          tone="emerald"
+        />
+        <RingStat
+          pct={data.dues.duesDA > 0 ? Math.min(100, Math.round(((data.dues.unpaidDA || 0) / data.dues.duesDA) * 100)) : 0}
+          icon={Hourglass}
+          label={t('duesRingUnpaid')}
+          value={`${(data.dues.unpaidDA || 0).toLocaleString('fr-DZ')}`}
+          tone="amber"
+          small="DA"
+        />
+        <RingStat
+          pct={data.dues.duesDA > 0 ? Math.min(100, Math.round(((data.dues.monthCommissionsDA || 0) / data.dues.duesDA) * 100)) : 0}
+          icon={Coins}
+          label={t('duesRingMonth')}
+          value={`${(data.dues.monthCommissionsDA || 0).toLocaleString('fr-DZ')}`}
+          tone="sky"
+          small="DA"
+        />
+      </div>
+
       {/* v4.14 — this month's commission expectation, so the admin knows what to collect */}
       <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
         <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -147,6 +182,23 @@ function DashboardTab() {
         </div>
         <Badge variant="outline" className="shrink-0">{t('duesRateBadge', { rate: data.dues.rate ?? 15 })}</Badge>
       </div>
+
+      {/* v4.15 — payment proofs waiting for review, straight from the dashboard */}
+      {Boolean(data.dues.proofsPending) && (
+        <button
+          onClick={() => switchTabFrom('dues')}
+          className="w-full rounded-2xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/40 p-4 flex items-center gap-3 text-start active:scale-[0.99] transition-all"
+        >
+          <span className="h-11 w-11 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
+            <ImagePlus className="h-5 w-5" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-bold text-sm text-amber-700 dark:text-amber-300 break-words">{t('duesProofsPendingTitle')}</span>
+            <span className="block text-xs text-muted-foreground break-words mt-0.5">{t('duesProofsPendingHint')}</span>
+          </span>
+          <Badge className="bg-amber-500 text-white border-0 shrink-0">{data.dues.proofsPending}</Badge>
+        </button>
+      )}
 
       <div className="rounded-2xl border bg-card p-4">
         <h3 className="font-bold text-sm mb-3">{t('seeAll')} — {t('users')}</h3>
@@ -178,6 +230,57 @@ function Kpi({ icon: Icon, label, value, highlight }: { icon: React.ComponentTyp
         <span className="text-[11px] font-semibold break-words">{label}</span>
       </div>
       <p className="text-2xl font-extrabold tracking-tight">{value}</p>
+    </div>
+  );
+}
+
+/* ---------- v4.15 — circular dues control cards ---------- */
+const RING_TONES: Record<string, string> = {
+  emerald: '#10b981',
+  amber: '#f59e0b',
+  sky: '#0ea5e9',
+  primary: '#8b5cf6',
+};
+
+/** A circular progress card (SVG ring) — one glance says how dues stand. */
+function RingStat({
+  pct,
+  icon: Icon,
+  label,
+  value,
+  tone = 'primary',
+  small,
+}: {
+  pct: number;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  label: string;
+  value: string | number;
+  tone?: keyof typeof RING_TONES;
+  small?: string;
+}) {
+  const color = RING_TONES[tone] || RING_TONES.primary;
+  const p = Math.min(100, Math.max(0, pct || 0));
+  return (
+    <div className="rounded-2xl border bg-card p-3 flex flex-col items-center text-center gap-1.5">
+      <div className="relative h-16 w-16 shrink-0">
+        <svg viewBox="0 0 40 40" className="h-16 w-16 -rotate-90">
+          <circle cx="20" cy="20" r="15.915" fill="none" stroke="currentColor" className="text-muted" strokeWidth="5.5" />
+          <circle
+            cx="20" cy="20" r="15.915"
+            fill="none" stroke={color}
+            strokeWidth="5.5" strokeLinecap="round"
+            strokeDasharray={`${p} ${100 - p}`}
+            className="transition-all duration-500"
+          />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center text-[13px] font-extrabold tabular-nums">{p}%</span>
+      </div>
+      <Icon className="h-3.5 w-3.5" style={{ color }} />
+      <p className="text-sm font-extrabold leading-none tabular-nums break-all" dir="ltr">
+        {value}
+        {small && <span className="text-[9px] font-bold text-muted-foreground ms-0.5">{small}</span>}
+      </p>
+      <p className="text-[10px] font-semibold text-muted-foreground leading-tight break-words">{label}</p>
     </div>
   );
 }
@@ -923,6 +1026,38 @@ function DuesTab() {
         </div>
       )}
 
+      {/* v4.15 — dues control rings: collection, unpaid share, executors owing */}
+      {totals && (
+        <div className="grid grid-cols-3 gap-2.5">
+          <RingStat
+            pct={(totals.duesDA || 0) > 0 ? Math.min(100, Math.max(0, Math.round(((totals.paidDA || 0) / (totals.duesDA || 1)) * 100))) : 100}
+            icon={BadgeCheck}
+            label={t('duesRingCollected')}
+            value={`${(totals.paidDA || 0).toLocaleString('fr-DZ')}`}
+            tone="emerald"
+            small="DA"
+          />
+          <RingStat
+            pct={(totals.duesDA || 0) > 0 ? Math.min(100, Math.round(((totals.unpaidDA || 0) / (totals.duesDA || 1)) * 100)) : 0}
+            icon={Hourglass}
+            label={t('duesRingUnpaid')}
+            value={`${(totals.unpaidDA || 0).toLocaleString('fr-DZ')}`}
+            tone="amber"
+            small="DA"
+          />
+          <RingStat
+            pct={items.length > 0 ? Math.round((items.filter((r) => r.unpaidDA > 0).length / items.length) * 100) : 0}
+            icon={UsersRound}
+            label={t('duesRingOwing')}
+            value={items.filter((r) => r.unpaidDA > 0).length}
+            tone="sky"
+          />
+        </div>
+      )}
+
+      {/* v4.15 — payment-proof review: approve → the month is marked paid automatically */}
+      <DuesProofs />
+
       {isLoading ? (
         <Spinner />
       ) : items.length === 0 ? (
@@ -1027,6 +1162,179 @@ function DetailChip({ label, value, strong }: { label: string; value: string; st
     <div className="min-w-0">
       <p className="text-[10px] font-bold text-muted-foreground leading-tight">{label}</p>
       <p className={`text-sm font-semibold break-words leading-snug ${strong ? 'text-amber-700 dark:text-amber-300 font-extrabold' : ''}`}>{value}</p>
+    </div>
+  );
+}
+
+/* ---------- v4.15 — payment-proof review (approve = settle automatically) ---------- */
+function DuesProofs() {
+  const { t, lang } = useLang();
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
+  const [viewImg, setViewImg] = useState<string | null>(null);
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  // query-token for <img> sources (the receipt photo)
+  const token = typeof window !== 'undefined' ? localStorage.getItem('slekni.token') || '' : '';
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-dues-proofs', status],
+    queryFn: () => api.get<{ items: DuesProof[] }>('/dues/admin/proofs', { status: status === 'all' ? undefined : status }),
+    refetchInterval: 15_000,
+  });
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ['admin-dues-proofs'] });
+    qc.invalidateQueries({ queryKey: ['admin-dues'] });
+    qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
+  }
+
+  async function approve(id: string) {
+    setBusy(true);
+    try {
+      await api.post(`/dues/admin/proofs/${id}/approve`);
+      toast.success(t('duesProofApprovedToast'));
+      invalidate();
+    } catch {
+      toast.error(t('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reject() {
+    if (!rejectId) return;
+    setBusy(true);
+    try {
+      await api.post(`/dues/admin/proofs/${rejectId}/reject`, { reason: rejectReason.trim() });
+      toast.success(t('duesProofRejectedToast'));
+      setRejectId(null);
+      setRejectReason('');
+      invalidate();
+    } catch {
+      toast.error(t('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const items = data?.items || [];
+
+  return (
+    <div className="rounded-2xl border bg-card p-3.5 space-y-2.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="font-bold text-sm flex items-center gap-1.5">
+          <ImagePlus className="h-4 w-4 text-primary" /> {t('duesProofsAdminTitle')}
+        </p>
+        <div className="flex gap-1.5 flex-wrap">
+          {(['pending', 'approved', 'rejected', 'all'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatus(s)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-all active:scale-95 ${status === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}
+            >
+              {t(s === 'pending' ? 'duesProofTabPending' : s === 'approved' ? 'duesProofTabApproved' : s === 'rejected' ? 'duesProofTabRejected' : 'allCategories')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <Spinner />
+      ) : items.length === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-4">{t('duesProofsEmpty')}</p>
+      ) : (
+        items.map((p) => {
+          const u = p.user;
+          return (
+            <div key={p._id} className={`rounded-xl border p-3 space-y-2 ${p.status === 'pending' ? 'border-amber-300 dark:border-amber-700' : ''}`}>
+              <div className="flex items-center gap-2.5">
+                {u && <UserAvatar user={u as PublicUser} size="h-9 w-9" textClass="text-xs" />}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold break-words leading-tight">{u?.name || '—'}</p>
+                  <p className="text-[11px] text-muted-foreground break-all">{u?.phone || u?.email || ''}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge variant="outline" className="text-[10px] shrink-0">{monthLabel(p.month, lang)}</Badge>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] shrink-0 ${p.status === 'pending' ? 'border-amber-400 text-amber-700 dark:text-amber-300' : p.status === 'approved' ? 'border-emerald-300 text-emerald-600' : 'border-rose-300 text-rose-600'}`}
+                  >
+                    {t(p.status === 'pending' ? 'duesProofTabPending' : p.status === 'approved' ? 'duesProofTabApproved' : 'duesProofTabRejected')}
+                  </Badge>
+                </div>
+              </div>
+              {p.note && <p className="text-xs text-muted-foreground break-words">📝 {p.note}</p>}
+              {p.status === 'rejected' && p.reviewNote && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-300 break-words">{p.reviewNote}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setViewImg(mediaUrl(`/dues/admin/proofs/${p._id}/image`))}
+                  className="h-8 rounded-lg text-xs font-bold flex-1"
+                >
+                  <ImagePlus className="h-3.5 w-3.5 me-1" /> {t('viewFull')}
+                </Button>
+                {p.status === 'pending' && (
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => approve(p._id)}
+                      className="h-8 rounded-lg text-xs font-bold flex-1 bg-emerald-600 text-white"
+                    >
+                      <Check className="h-3.5 w-3.5 me-1" /> {t('duesProofApprove')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => { setRejectId(p._id); setRejectReason(''); }}
+                      className="h-8 rounded-lg text-xs font-bold flex-1 text-destructive border-destructive/40"
+                    >
+                      <X className="h-3.5 w-3.5 me-1" /> {t('duesProofReject')}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* full-size receipt viewer — sensitive: never cached (server sets no-store) */}
+      <AlertDialog open={!!viewImg} onOpenChange={(o) => !o && setViewImg(null)}>
+        <AlertDialogContent className="rounded-2xl max-w-lg" aria-describedby={undefined}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> {t('duesProofViewTitle')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          {viewImg && <img src={viewImg} alt={t('duesProofViewTitle')} className="w-full rounded-xl border max-h-[60dvh] object-contain bg-muted" />}
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl h-11">{t('close')}</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* rejection reason */}
+      <AlertDialog open={!!rejectId} onOpenChange={(o) => !o && setRejectId(null)}>
+        <AlertDialogContent className="rounded-2xl max-w-sm" aria-describedby={undefined}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">{t('duesProofReject')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('duesProofRejectHint')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={t('duesProofRejectPlaceholder')} className="min-h-20 rounded-xl" maxLength={300} />
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl h-11">{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={reject} disabled={busy} className="rounded-xl h-11 bg-destructive text-destructive-foreground font-bold">
+              {busy && <LoaderCircle className="h-4 w-4 animate-spin" />}
+              {t('duesProofReject')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1233,12 +1541,13 @@ function UserMonthsDialog({
   );
 }
 
-/* ---------- Settings (commission rate + contact page) ---------- */
+/* ---------- Settings (commission rate + payment coordinates + contact page) ---------- */
 function SettingsTab() {
   const { t } = useLang();
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [rate, setRate] = useState<number | null>(null);
+  const [payment, setPayment] = useState<{ ccp: string; ccpKey: string; rip: string } | null>(null);
   const [contact, setContact] = useState<{ phone: string; email: string; instagram: string; address: string } | null>(null);
 
   const { data: settings } = useQuery({
@@ -1248,6 +1557,7 @@ function SettingsTab() {
   });
 
   const curRate = rate ?? settings?.commissionPercent ?? 15;
+  const curPayment = payment ?? settings?.duesPayment ?? { ccp: '', ccpKey: '', rip: '' };
   const curContact = contact ?? settings?.contact ?? { phone: '', email: '', instagram: '', address: '' };
 
   async function save() {
@@ -1255,6 +1565,11 @@ function SettingsTab() {
     try {
       await api.put('/admin/settings', {
         commissionPercent: Math.min(50, Math.max(0, Math.round(curRate))),
+        duesPayment: {
+          ccp: curPayment.ccp.trim(),
+          ccpKey: curPayment.ccpKey.trim(),
+          rip: curPayment.rip.trim(),
+        },
         contact: curContact,
       });
       toast.success(t('settingsSaved'));
@@ -1274,6 +1589,26 @@ function SettingsTab() {
         <h3 className="font-bold text-sm flex items-center gap-1.5"><HandCoins className="h-4 w-4 text-primary" /> {t('commissionTitle')}</h3>
         <NumField label={t('commissionPercent')} value={curRate} onChange={(v) => setRate(Math.min(50, Math.max(0, v)))} />
         <p className="text-[11px] text-muted-foreground leading-relaxed break-words">{t('commissionPercentHint')}</p>
+      </div>
+
+      {/* v4.15 — the official dues payment coordinates shown on the executors' dues page */}
+      <div className="rounded-2xl border-2 border-emerald-500/25 bg-emerald-50 dark:bg-emerald-950/30 p-4 space-y-3">
+        <h3 className="font-bold text-sm flex items-center gap-1.5"><Wallet className="h-4 w-4 text-emerald-600" /> {t('duesPaymentSettingsTitle')}</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('duesCcp')}</Label>
+            <Input value={curPayment.ccp} onChange={(e) => setPayment({ ...curPayment, ccp: e.target.value })} className="h-10 rounded-xl" dir="ltr" maxLength={30} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t('duesCcpKey')}</Label>
+            <Input value={curPayment.ccpKey} onChange={(e) => setPayment({ ...curPayment, ccpKey: e.target.value })} className="h-10 rounded-xl" dir="ltr" maxLength={4} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">{t('duesRip')}</Label>
+          <Input value={curPayment.rip} onChange={(e) => setPayment({ ...curPayment, rip: e.target.value })} className="h-10 rounded-xl" dir="ltr" maxLength={40} />
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-snug break-words">{t('duesPaymentSettingsHint')}</p>
       </div>
 
       {/* v4.6 — contact page content, edited here and shown to all users
@@ -1443,8 +1778,9 @@ function UserDuesPanel({ userId }: { userId: string }) {
     <div className="rounded-xl border-2 border-primary/25 bg-primary/5 p-3 space-y-2.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-extrabold text-primary flex items-center gap-1.5"><HandCoins className="h-3.5 w-3.5" /> {t('duesTitle')}</p>
-        <Badge variant="outline" className={`text-[10px] ${(totals?.unpaidDA || 0) > 0 ? 'border-amber-300 text-amber-600' : 'border-emerald-300 text-emerald-600'}`}>
-          {(totals?.unpaidDA || 0) > 0 ? t('duesUnpaidBadge') : t('duesAllPaidTitle')}
+        {/* v4.15 — honest wording: no completed tasks ≠ "everything paid" */}
+        <Badge variant="outline" className={`text-[10px] ${(totals?.unpaidDA || 0) > 0 ? 'border-amber-300 text-amber-600' : (totals?.tasks || 0) === 0 ? 'border-border text-muted-foreground' : 'border-emerald-300 text-emerald-600'}`}>
+          {(totals?.unpaidDA || 0) > 0 ? t('duesUnpaidBadge') : (totals?.tasks || 0) === 0 ? t('duesNothingYetTitle') : t('duesAllPaidTitle')}
         </Badge>
       </div>
 
@@ -1482,6 +1818,8 @@ function AnalyticsSection() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-stats'],
     queryFn: () => api.get<AdminStats>('/admin/stats'),
+    // v4.15 — the daily cards (accounts/tasks/income) now move on their own
+    refetchInterval: 30_000,
   });
 
   if (isLoading) return <Spinner />;

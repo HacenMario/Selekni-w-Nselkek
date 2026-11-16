@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { User } from '../models/user.model';
 import { Offer } from '../models/offer.model';
 import { MonthlySettlement, commissionRate } from '../models/commission.model';
+import { DuesPaymentProof } from '../models/duesproof.model';
 import { Complaint } from '../models/complaint.model';
 import { Settings, DEFAULT_CATEGORIES } from '../models/settings.model';
 import { Notification } from '../models/notification.model';
@@ -45,7 +46,9 @@ async function duesSummary() {
     { $match: { status: 'done', completedAt: { $gte: monthStart }, acceptedBy: { $ne: null } } },
     { $group: { _id: null, earned: { $sum: '$amountDA' } } },
   ]);
-  return { rate, unpaidUsers, unpaidDA, duesDA, monthCommissionsDA: Math.round((((monthAgg[0] as any)?.earned || 0) * rate) / 100) };
+  // v4.15 — payment proofs waiting for the administration's review
+  const proofsPending = await DuesPaymentProof.countDocuments({ status: 'pending' });
+  return { rate, unpaidUsers, unpaidDA, duesDA, monthCommissionsDA: Math.round((((monthAgg[0] as any)?.earned || 0) * rate) / 100), proofsPending };
 }
 
 /* ---- Dashboard ---- */
@@ -72,7 +75,7 @@ router.get('/dashboard', asyncH(async (_req: AuthRequest, res) => {
     users: { total: usersTotal, owners, seekers, idPending: idPendingUsers, verified: verifiedUsers, banned: bannedUsers },
     offers: { open: offersOpen, assigned: offersAssigned, awaiting: offersAwaiting, done: offersDone, cancelled: offersCancelled },
     // v4.14 — commission model replaces the subscriptions block
-    dues: { rate: dues.rate, unpaidUsers: dues.unpaidUsers, unpaidDA: dues.unpaidDA, duesDA: dues.duesDA, monthCommissionsDA: dues.monthCommissionsDA },
+    dues: { rate: dues.rate, unpaidUsers: dues.unpaidUsers, unpaidDA: dues.unpaidDA, duesDA: dues.duesDA, monthCommissionsDA: dues.monthCommissionsDA, proofsPending: dues.proofsPending || 0 },
     complaintsOpen,
     recentUsers,
   });
@@ -301,8 +304,10 @@ router.post('/complaints/:id/resolve', asyncH(async (req: AuthRequest, res) => {
 
 /* ---- Smart statistics (charts on the dashboard) ---- */
 router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
+  // v4.15 — UTC-anchored day buckets: the series always line up with the
+  // $dateToString (UTC) aggregation keys, whatever the server's local timezone
   const since = new Date(Date.now() - 13 * 24 * 3600 * 1000);
-  since.setHours(0, 0, 0, 0);
+  since.setUTCHours(0, 0, 0, 0);
 
   const dayKeys: string[] = [];
   for (let i = 0; i < 14; i++) {
@@ -367,7 +372,7 @@ router.get('/stats', asyncH(async (_req: AuthRequest, res) => {
     byCategory: (byCategory as any[]).map((r) => ({ key: r._id, count: r.count })),
     byWilaya: (byWilaya as any[]).map((r) => ({ wilaya: r._id || '—', count: r.count })),
     // v4.14 — commission model replaces the subscription charts
-    dues: { unpaidUsers: dues.unpaidUsers, unpaidDA: dues.unpaidDA, duesDA: dues.duesDA, monthCommissionsDA: dues.monthCommissionsDA },
+    dues: { unpaidUsers: dues.unpaidUsers, unpaidDA: dues.unpaidDA, duesDA: dues.duesDA, monthCommissionsDA: dues.monthCommissionsDA, proofsPending: dues.proofsPending || 0 },
     smart: {
       avgOfferDA: Math.round(a.avg || 0),
       totalBudgetDA: a.budget || 0,
@@ -404,6 +409,12 @@ router.put('/settings', asyncH(async (req: AuthRequest, res) => {
   const body = z.object({
     // v4.14 — commission rate (percentage of each DONE task, charged to the executor)
     commissionPercent: z.number().min(0).max(50).optional(),
+    // v4.15 — the administration's official dues payment coordinates (shown to executors)
+    duesPayment: z.object({
+      ccp: z.string().max(30).optional(),
+      ccpKey: z.string().max(4).optional(),
+      rip: z.string().max(40).optional(),
+    }).optional(),
     subscription: z.object({
       isEnabled: z.boolean().optional(),
       priceDA: z.number().min(0).max(999999999).optional(),
@@ -425,6 +436,13 @@ router.put('/settings', asyncH(async (req: AuthRequest, res) => {
   let settings = await Settings.findOne({ key: 'main' });
   if (!settings) settings = await Settings.create({ key: 'main' });
   if (body.commissionPercent !== undefined) settings.commissionPercent = body.commissionPercent;
+  if (body.duesPayment) {
+    settings.duesPayment = {
+      ccp: body.duesPayment.ccp ?? (settings.duesPayment?.ccp || ''),
+      ccpKey: body.duesPayment.ccpKey ?? (settings.duesPayment?.ccpKey || ''),
+      rip: body.duesPayment.rip ?? (settings.duesPayment?.rip || ''),
+    };
+  }
   if (body.subscription) Object.assign(settings.subscription, body.subscription);
   if (body.contact) settings.contact = { ...settings.contact, ...body.contact };
   if (body.categories) settings.categories = body.categories;

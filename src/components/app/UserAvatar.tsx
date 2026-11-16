@@ -26,13 +26,14 @@ export function UserAvatar({
 
   if (showPhoto) {
     return (
+      // v4.15 — object-contain: the whole photo shows inside the frame, never cropped
       <img
         key={identity}
         src={avatarUrl(user._id, version || undefined)}
         alt={user.name || ''}
         loading="lazy"
         onError={() => setFailedFor(identity)}
-        className={`${size} ${ring ? 'ring-2 ring-primary/30' : ''} rounded-2xl object-cover border bg-muted shrink-0`}
+        className={`${size} ${ring ? 'ring-2 ring-primary/30' : ''} rounded-2xl object-contain bg-muted border shrink-0 p-[2px]`}
         draggable={false}
       />
     );

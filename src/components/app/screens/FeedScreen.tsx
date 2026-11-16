@@ -60,7 +60,7 @@ export function FeedScreen() {
         sort: fSort !== 'new' ? fSort : undefined,
         limit: 30,
       }),
-    refetchInterval: 20_000,
+    refetchInterval: 5_000,
     staleTime: 10_000,
   });
 
@@ -103,12 +103,13 @@ export function FeedScreen() {
     if (!accepting) return;
     setBusy(true);
     try {
-      const updated = await api.post<Offer>(`/offers/${accepting._id}/accept`);
+      await api.post<Offer>(`/offers/${accepting._id}/accept`);
       await qc.invalidateQueries({ queryKey: ['feed'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
-      toast.success(t('accepted'));
+      toast.success(t('accepted'), { duration: 5000 });
+      // v4.15 — the sheet does NOT reopen with a "task done" button after
+      // accepting: the executor continues from "my tasks" when work is finished
       setAccepting(null);
-      openOfferDetail(updated._id);
     } catch (e) {
       const msg = (e as { code?: string }).code === 'ALREADY_TAKEN' ? t('offerTaken') : t('error');
       toast.error(msg);

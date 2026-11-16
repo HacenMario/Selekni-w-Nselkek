@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LoaderCircle, MapPin, CalendarDays, HandCoins, ShieldCheck, MessageSquareWarning } from 'lucide-react';
+import { LoaderCircle, MapPin, CalendarDays, HandCoins, Navigation, ShieldCheck, MessageSquareWarning, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { ImageGallery } from '@/components/app/ImageGallery';
 import { UserCard } from '@/components/app/UserCard';
@@ -59,7 +59,10 @@ export function OfferDetailSheet() {
     setBusy('accept');
     try {
       await api.post(`/offers/${offer._id}/accept`);
-      toast.success(t('accepted'));
+      toast.success(t('accepted'), { duration: 5000 });
+      // v4.15 — close the sheet after accepting: the executor will continue the
+      // flow from "my tasks" once the work is actually done, not right away
+      closeOfferDetail();
       invalidate();
     } catch (e) {
       const code = (e as { code?: string }).code;
@@ -169,6 +172,12 @@ export function OfferDetailSheet() {
                     <MapPin className="h-3.5 w-3.5" /> {wilayaShort(offer.wilaya, lang)}
                   </span>
                 )}
+                {/* v4.15 — how many people the task needs */}
+                {(offer.workersNeeded || 1) > 1 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-bold">
+                    <Users className="h-3 w-3" /> {offer.workersNeeded}
+                  </span>
+                )}
                 <span className="text-xs text-muted-foreground ms-auto">{timeAgo(offer.createdAt, t)}</span>
               </div>
 
@@ -209,6 +218,26 @@ export function OfferDetailSheet() {
                     <p className="text-sm font-semibold break-words">{offer.address || t('showAddress')}</p>
                   </div>
                 </div>
+                {/* v4.15 — precise GPS location: taps straight into Google Maps directions */}
+                {offer.location && (
+                  <div className="flex items-start gap-3 p-3.5">
+                    <Navigation className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground">{t('locationLabel')}</p>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${offer.location.lat},${offer.location.lng}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-0.5 inline-flex max-w-full items-center gap-1.5 rounded-xl border-2 border-primary/40 bg-primary/5 px-3 py-1.5 text-sm font-bold text-primary hover:border-primary active:scale-[0.98] transition-all break-all"
+                        dir="ltr"
+                      >
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        <span className="break-all">{offer.location.lat}, {offer.location.lng}</span>
+                        <span className="shrink-0 text-[11px]">— {t('openDirections')}</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -12,6 +12,10 @@ export interface INotification extends Document {
     // dues notifications replace them
     | 'dues_reminder'
     | 'dues_paid'
+    // v4.15 — payment-proof lifecycle (executor uploads a receipt photo)
+    | 'dues_proof_submitted'
+    | 'dues_proof_approved'
+    | 'dues_proof_rejected'
     | 'id_pending'
     | 'complaint_new'
     | 'complaint_resolved'

@@ -14,6 +14,12 @@ export interface IOfferImage {
   data: Buffer;
 }
 
+export interface IOfferLocation {
+  /** WGS84 coordinates captured from the device GPS when creating the offer. */
+  lat: number;
+  lng: number;
+}
+
 export interface IOffer extends Document {
   owner: unknown;
   title: string;
@@ -21,6 +27,10 @@ export interface IOffer extends Document {
   categoryKey: string;
   wilaya: string;
   address: string;
+  /** v4.15 — precise GPS location (optional alternative to a typed address). */
+  location?: IOfferLocation;
+  /** v4.15 — how many people the task needs (1 when omitted). */
+  workersNeeded?: number;
   amountDA: number;
   scheduledAt?: Date;
   images: IOfferImage[];
@@ -58,10 +68,17 @@ const OfferSchema = new Schema<IOffer>(
   {
     owner: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     title: { type: String, required: true, trim: true, maxlength: 120 },
-    description: { type: String, required: true, trim: true, maxlength: 2000 },
+    // v4.15 — the description became optional (the title + photos can carry the offer)
+    description: { type: String, trim: true, maxlength: 2000, default: '' },
     categoryKey: { type: String, required: true, index: true },
     wilaya: { type: String, default: '' },
-    address: { type: String, required: true, trim: true, maxlength: 300 },
+    // v4.15 — a typed address OR a GPS location (or both); neither is exposed publicly
+    address: { type: String, trim: true, maxlength: 300, default: '' },
+    location: {
+      type: { lat: { type: Number, min: -90, max: 90 }, lng: { type: Number, min: -180, max: 180 } },
+      default: null,
+    },
+    workersNeeded: { type: Number, min: 1, max: 50, default: 1 },
     amountDA: { type: Number, required: true, min: 0 },
     scheduledAt: { type: Date },
     images: { type: [ImageSchema], default: [] },

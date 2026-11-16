@@ -17,10 +17,15 @@ export const USER_PUB_FIELDS = 'name phone wilaya gender age avatarIsSet authPro
 
 const createSchema = z.object({
   title: z.string().min(5).max(120),
-  description: z.string().min(10).max(2000),
+  // v4.15 — the description is optional; an offer can live on title + photos + location
+  description: z.string().max(2000).optional().default(''),
   categoryKey: z.string().min(1).max(60),
   wilaya: z.string().max(80).default(''),
-  address: z.string().min(5).max(300),
+  // v4.15 — a typed address OR a GPS location (or both) identifies the task place
+  address: z.string().max(300).optional().default(''),
+  location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).optional().nullable(),
+  // v4.15 — how many people the task needs (>=1)
+  workersNeeded: z.number().int().min(1).max(50).optional(),
   amountDA: z.number().min(0).max(999999999),
   scheduledAt: z.string().datetime().optional().nullable(),
   images: z.array(z.object({ mime: z.string(), dataBase64: z.string() })).max(MAX_IMAGES).optional(),
@@ -61,7 +66,7 @@ router.get('/feed', auth, asyncH(async (req: AuthRequest, res) => {
 
   const total = await Offer.countDocuments(filter);
   const items = await Offer.find(filter)
-    .select('-address')
+    .select('-address -location')
     .sort(sortSpec)
     .skip((page - 1) * limit)
     .limit(limit)
@@ -73,7 +78,7 @@ router.get('/feed', auth, asyncH(async (req: AuthRequest, res) => {
 /** Newest still-open offer for the live popup (client keeps its own dismissed list). */
 router.get('/live', auth, asyncH(async (req: AuthRequest, res) => {
   const offer = await Offer.findOne({ status: 'open', owner: { $ne: req.user!._id } })
-    .select('-address')
+    .select('-address -location')
     .sort({ createdAt: -1 })
     .populate('owner', USER_PUB_FIELDS)
     .lean({ virtuals: false });
@@ -140,13 +145,23 @@ router.post('/', auth, asyncH(async (req: AuthRequest, res) => {
   const { docs: videos, error: vErr } = await validateVideos(String(req.user!._id), body.videos);
   if (vErr) { res.status(400).json({ error: vErr, code: 'BAD_VIDEO' }); return; }
 
+  // v4.15 — the task place must be identified: a typed address and/or a GPS point
+  if (!body.address.trim() && !(body.location && Number.isFinite(body.location.lat) && Number.isFinite(body.location.lng))) {
+    res.status(400).json({ error: 'Provide an address or a GPS location', code: 'ADDRESS_REQUIRED' });
+    return;
+  }
+
   const offer = await Offer.create({
     owner: req.user!._id,
     title: body.title,
     description: body.description,
     categoryKey: body.categoryKey,
     wilaya: body.wilaya,
-    address: body.address,
+    address: body.address.trim(),
+    ...(body.location && Number.isFinite(body.location.lat) && Number.isFinite(body.location.lng)
+      ? { location: { lat: body.location.lat, lng: body.location.lng } }
+      : {}),
+    ...(body.workersNeeded && body.workersNeeded >= 1 ? { workersNeeded: body.workersNeeded } : {}),
     amountDA: body.amountDA,
     scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : undefined,
     images,
@@ -183,6 +198,7 @@ router.get('/:id', auth, asyncH(async (req: AuthRequest, res) => {
   // super admin has full visibility for moderation (address included)
   if (!isOwner && !isWorker && !req.user!.isSuperAdmin) {
     delete json.address;
+    delete json.location; // the precise GPS point is as private as the address
   }
   json.viewerIsOwner = isOwner;
   // the super admin gets the same detail sheet as the owner: worker card visible,

@@ -20,7 +20,8 @@ export function MyOffersScreen({ onCreate }: { onCreate: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['my-offers'],
     queryFn: () => api.get<{ items: Offer[] }>('/offers/mine'),
-    refetchInterval: 20_000,
+    // v4.15 — silent 5-second refresh: the worker's acceptance shows up on its own
+    refetchInterval: 5_000,
   });
 
   return (

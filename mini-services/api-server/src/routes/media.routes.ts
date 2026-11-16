@@ -17,8 +17,8 @@ function bucket(bucketName = 'videos'): mongoose.mongo.GridFSBucket {
 }
 
 const TMP_DIR = path.join('/tmp', 'slekni-video-uploads');
-// v4.10 — server-side cap: protects the free MongoDB tier from huge video blobs
-const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+// v4.15 — cap raised from 30 MB to 50 MB (still protects the free MongoDB tier)
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 function tmpPath(uploadId: string): string {
   // strict validation — the id never reaches the filesystem raw
@@ -65,7 +65,7 @@ router.post('/video/finalize', auth, asyncH(async (req: AuthRequest, res: Respon
   if (size === 0) { res.status(400).json({ error: 'Empty file', code: 'EMPTY' }); return; }
   if (size > MAX_VIDEO_BYTES) {
     fs.promises.unlink(p).catch(() => {});
-    res.status(413).json({ error: 'Video too large (max 30 MB)', code: 'VIDEO_TOO_LARGE' });
+    res.status(413).json({ error: 'Video too large (max 50 MB)', code: 'VIDEO_TOO_LARGE' });
     return;
   }
 

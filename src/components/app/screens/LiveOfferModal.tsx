@@ -84,6 +84,10 @@ export function LiveOfferModal() {
   const setLiveTaken = useApp((s) => s.setLiveTaken);
   const hideLive = useApp((s) => s.hideLive);
   const bumpFeed = useApp((s) => s.bumpFeed);
+  // v4.15 — never stack on top of another open window (bell panel / detail sheet / create offer)
+  const notifPanelOpen = useApp((s) => s.notifPanelOpen);
+  const detailOfferId = useApp((s) => s.detailOfferId);
+  const creating = useApp((s) => s.creating);
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
 
@@ -95,19 +99,21 @@ export function LiveOfferModal() {
   }, [liveState, hideLive]);
 
   if (!user || liveState === 'hidden' || !liveOffer) return null;
+  // an overlay window is open — the popup steps aside instead of covering it
+  if (notifPanelOpen || detailOfferId || creating) return null;
 
   async function accept() {
     if (!liveOffer) return;
     setBusy(true);
     try {
-      const updated = await api.post<Offer>(`/offers/${liveOffer._id}/accept`);
-      toast.success(t('accepted'));
+      await api.post<Offer>(`/offers/${liveOffer._id}/accept`);
+      toast.success(t('accepted'), { duration: 5000 });
       qc.invalidateQueries({ queryKey: ['feed'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
       bumpFeed();
       hideLive();
-      useApp.getState().openOfferDetail(updated._id);
+      // v4.15 — the sheet does NOT reopen after accepting (continue from "my tasks")
     } catch (e) {
       const code = (e as { code?: string }).code;
       if (code === 'ALREADY_TAKEN') {

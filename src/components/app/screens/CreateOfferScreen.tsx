@@ -1,7 +1,7 @@
 'use client';
 
-// v4.10 — video size cap (matches the server limit; protects the free MongoDB tier)
-const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+// v4.15 — video size cap raised to 50 MB (matches the server limit)
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,13 +9,13 @@ import { useLang } from '@/lib/language-context';
 import { api, uploadVideo } from '@/lib/api';
 import { compressImage, CompressedImage } from '@/lib/image';
 import { Settings } from '@/lib/types';
+import { categoryLabel } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { CategoryChip } from '@/components/app/ui-bits';
+import { ClearInput } from '@/components/app/ClearableField';
 import { WilayaSelect } from '@/components/app/WilayaSelect';
-import { X, LoaderCircle, Camera, ImagePlus, TriangleAlert, Film, Play } from 'lucide-react';
+import { X, LoaderCircle, Camera, ImagePlus, TriangleAlert, Film, Play, MapPin, Users, Navigation } from 'lucide-react';
 import { toast } from 'sonner';
 
 const MAX_IMAGES = 10;
@@ -28,6 +28,9 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
   const [categoryKey, setCategoryKey] = useState('');
   const [wilaya, setWilaya] = useState('');
   const [address, setAddress] = useState('');
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [workersNeeded, setWorkersNeeded] = useState('');
   const [amount, setAmount] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [images, setImages] = useState<CompressedImage[]>([]);
@@ -66,11 +69,29 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
     }
   }
 
+  /** v4.15 — one tap captures the precise place (user grants the GPS permission). */
+  function pickLocation() {
+    if (!('geolocation' in navigator)) { toast.error(t('gpsError')); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: Number(pos.coords.latitude.toFixed(6)), lng: Number(pos.coords.longitude.toFixed(6)) });
+        setLocating(false);
+        toast.success(t('gpsPicked'));
+      },
+      () => {
+        setLocating(false);
+        toast.error(t('gpsError'));
+      },
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 }
+    );
+  }
+
   async function submit() {
     if (!title.trim() || title.trim().length < 5) { toast.error(t('offerTitle')); return; }
-    if (!description.trim() || description.trim().length < 10) { toast.error(t('offerDescription')); return; }
     if (!categoryKey) { toast.error(t('offerCategory')); return; }
-    if (!address.trim()) { toast.error(t('offerAddress')); return; }
+    // v4.15 — the task place: typed address and/or the captured GPS point
+    if (!address.trim() && !location) { toast.error(t('offerAddress')); return; }
     setSaving(true);
     try {
       let videos: { gridId: string; mime: string }[] | undefined;
@@ -89,14 +110,17 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
           setVideoUp(false);
         }
       }
+      const iso = scheduledToLocalIso(scheduledAt);
       await api.post('/offers', {
         title: title.trim(),
         description: description.trim(),
         categoryKey,
         wilaya,
         address: address.trim(),
+        ...(location ? { location } : {}),
+        ...(Number(workersNeeded) >= 1 ? { workersNeeded: Math.min(50, Math.round(Number(workersNeeded))) } : {}),
         amountDA: Number(amount) || 0,
-        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        scheduledAt: iso,
         images: images.length ? images : undefined,
         videos,
       });
@@ -120,30 +144,29 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
       <div className="flex-1 overflow-y-auto px-4 pb-32 pt-4 space-y-5">
         <div className="space-y-1.5">
           <Label htmlFor="o-title">{t('offerTitle')} *</Label>
-          <Input id="o-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('offerTitlePlaceholder')} className="h-11 rounded-xl" maxLength={120} />
+          <ClearInput id="o-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('offerTitlePlaceholder')} className="h-11 rounded-xl" maxLength={120} />
         </div>
 
+        {/* v4.15 — the field/domain became a proper dropdown list */}
         <div className="space-y-1.5">
-          <Label>{t('offerCategory')} *</Label>
-          <div className="flex flex-wrap gap-2">
+          <Label htmlFor="o-category">{t('offerCategory')} *</Label>
+          <select
+            id="o-category"
+            value={categoryKey}
+            onChange={(e) => setCategoryKey(e.target.value)}
+            className="h-12 w-full rounded-xl border-2 bg-card px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/40"
+          >
+            <option value="" disabled>— {t('offerCategory')} —</option>
             {settings?.categories.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                onClick={() => setCategoryKey(c.key)}
-                className={`inline-flex rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition-all active:scale-95 ${
-                  categoryKey === c.key ? 'border-primary bg-primary text-primary-foreground shadow-md shadow-primary/25' : 'border-border bg-card hover:border-primary/50'
-                }`}
-              >
-                <CategoryChip cat={c} lang={lang} />
-              </button>
+              <option key={c.key} value={c.key}>{categoryLabel(c, lang)}</option>
             ))}
-          </div>
+          </select>
         </div>
 
+        {/* v4.15 — the description is no longer required */}
         <div className="space-y-1.5">
-          <Label htmlFor="o-desc">{t('offerDescription')} *</Label>
-          <Textarea id="o-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('offerDescriptionPlaceholder')} className="min-h-28 rounded-xl" maxLength={2000} />
+          <Label htmlFor="o-desc">{t('offerDescription')} ({t('optional')})</Label>
+          <Textarea id="o-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('offerDescriptionPlaceholder')} className="min-h-24 rounded-xl" maxLength={2000} />
         </div>
 
         <div className="space-y-1.5">
@@ -153,17 +176,57 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
 
         <div className="space-y-1.5">
           <Label htmlFor="o-amount">{t('offerAmount')}</Label>
-          <Input id="o-amount" type="number" inputMode="numeric" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className="h-11 rounded-xl" placeholder="2000" />
+          <ClearInput id="o-amount" type="number" inputMode="numeric" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className="h-11 rounded-xl" placeholder="2000" />
         </div>
 
+        {/* v4.15 — how many people the task needs */}
+        <div className="space-y-1.5">
+          <Label htmlFor="o-workers" className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-primary" /> {t('workersNeeded')} ({t('optional')})</Label>
+          <ClearInput id="o-workers" type="number" inputMode="numeric" min={1} max={50} value={workersNeeded} onChange={(e) => setWorkersNeeded(e.target.value)} className="h-11 rounded-xl" placeholder="1" />
+        </div>
+
+        {/* v4.15 — address as text AND/OR the precise GPS point */}
         <div className="space-y-1.5">
           <Label htmlFor="o-address">{t('offerAddress')} *</Label>
-          <Input id="o-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('offerAddressPlaceholder')} className="h-11 rounded-xl" maxLength={300} />
+          <ClearInput id="o-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('offerAddressPlaceholder')} className="h-11 rounded-xl" maxLength={300} />
+          <button
+            type="button"
+            onClick={pickLocation}
+            disabled={locating}
+            className={`w-full h-11 rounded-xl border-2 flex items-center justify-center gap-2 text-sm font-bold transition-all active:scale-[0.99] ${
+              location ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' : 'border-primary/40 bg-primary/5 text-primary hover:border-primary'
+            }`}
+          >
+            {locating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
+            {location ? t('gpsPickedShort') : t('gpsPick')}
+          </button>
+          {location && (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2">
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 break-all" dir="ltr">
+                <MapPin className="h-3.5 w-3.5 shrink-0" /> {location.lat}, {location.lng}
+              </span>
+              <button type="button" onClick={() => setLocation(null)} aria-label={t('close')} className="h-6 w-6 rounded-full bg-white dark:bg-emerald-900 text-rose-600 flex items-center justify-center shadow active:scale-90 shrink-0">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground leading-snug break-words">{t('offerAddressHint')}</p>
         </div>
 
+        {/* v4.15 — the pattern is enforced: yyyy/mm/dd hh:mm (numeric keyboard) */}
         <div className="space-y-1.5">
           <Label htmlFor="o-date">{t('scheduledAt')} ({t('optional')})</Label>
-          <Input id="o-date" type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="h-11 rounded-xl" />
+          <ClearInput
+            id="o-date"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(formatSchedule(e.target.value))}
+            className="h-11 rounded-xl"
+            placeholder="yyyy/mm/dd hh:mm"
+            inputMode="numeric"
+            dir="ltr"
+            maxLength={16}
+          />
+          <p className="text-[11px] text-muted-foreground leading-snug break-words">{t('schedulePatternHint')}</p>
         </div>
 
         {/* images — max 10, compressed automatically */}
@@ -198,7 +261,7 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
           </p>
         </div>
 
-        {/* video — GridFS, capped at 30 MB to protect the free MongoDB tier */}
+        {/* video — GridFS, capped at 50 MB to protect the free MongoDB tier */}
         <div className="space-y-2">
           <Label>{t('offerVideo')}</Label>
           {video ? (
@@ -238,7 +301,7 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
                   const f = e.target.files?.[0];
                   e.currentTarget.value = '';
                   if (!f) return;
-                  // v4.10 — friendly pre-check: refuse heavy videos before any upload bytes move
+                  // friendly pre-check: refuse heavy videos before any upload bytes move
                   if (f.size > MAX_VIDEO_BYTES) { toast.error(t('videoTooLarge')); return; }
                   setVideo(f);
                 }}
@@ -261,4 +324,34 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
       </div>
     </div>
   );
+}
+
+/* ---------- v4.15 helpers: date pattern + GPS-free precise location ---------- */
+
+/**
+ * Format the schedule field strictly as yyyy/mm/dd hh:mm while typing:
+ * digits only are collected, separators are inserted automatically
+ * (4-digit year, 2-digit month, 2-digit day, 2-digit hour, 2-digit minutes).
+ */
+function formatSchedule(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 12);
+  let out = digits.slice(0, 4);
+  if (digits.length > 4) out += '/' + digits.slice(4, 6);
+  if (digits.length > 6) out += '/' + digits.slice(6, 8);
+  if (digits.length > 8) out += ' ' + digits.slice(8, 10);
+  if (digits.length > 10) out += ':' + digits.slice(10, 12);
+  return out;
+}
+
+/** 'yyyy/mm/dd hh:mm' → ISO string, or null when empty/invalid. */
+function scheduledToLocalIso(value: string): string | null {
+  if (!value) return null;
+  const m = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  const nums = m.map(Number);
+  const [, y, mo, d, h, mi] = nums;
+  const dt = new Date(y, mo - 1, d, h, mi);
+  // reject impossible dates (31/02…) via a round-trip check
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt.toISOString();
 }

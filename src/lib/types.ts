@@ -72,6 +72,10 @@ export interface Offer {
   categoryKey: string;
   wilaya: string;
   address?: string;
+  /** v4.15 — precise GPS point captured at creation (owner/worker/admin only). */
+  location?: { lat: number; lng: number } | null;
+  /** v4.15 — how many people the task needs (1 when omitted). */
+  workersNeeded?: number;
   amountDA: number;
   scheduledAt?: string | null;
   images: OfferImageMeta[];
@@ -97,6 +101,8 @@ export interface Settings {
   };
   // v4.14 — commission model (replaces subscriptions): % of each DONE task charged to the executor
   commissionPercent?: number;
+  // v4.15 — the administration's official dues payment coordinates
+  duesPayment?: { ccp: string; ccpKey: string; rip: string };
   packages?: unknown[];
   categories: { key: string; label: { ar: string; fr: string; en: string; tr?: string; es?: string; it?: string; de?: string; ru?: string; zh?: string }; icon: string }[];
   // v4.6 — "contact us" page, edited from the admin account
@@ -117,6 +123,18 @@ export interface DuesMonth {
   note?: string;
 }
 
+/** v4.15 — one payment-proof submission and its review state. */
+export interface DuesProof {
+  _id: string;
+  month: string;
+  status: 'pending' | 'approved' | 'rejected';
+  note?: string;
+  reviewNote?: string;
+  createdAt: string;
+  decidedAt?: string;
+  user?: { _id: string; name: string; phone: string; email: string; role?: Role } | null;
+}
+
 export interface DuesTotals {
   tasks: number;
   earnedDA: number;
@@ -132,6 +150,8 @@ export interface MyDues {
   months: DuesMonth[];
   totals: DuesTotals;
   contact: { phone: string; email: string };
+  // v4.15 — the administration's official CCP/RIP payment coordinates
+  payment?: { ccp: string; ccpKey: string; rip: string };
 }
 
 /** One executor row in the admin dues tab (aggregated over the selected month or all). */
@@ -178,6 +198,10 @@ export interface AppNotification {
     // v4.14 — commission model
     | 'dues_reminder'
     | 'dues_paid'
+    // v4.15 — payment-proof lifecycle
+    | 'dues_proof_submitted'
+    | 'dues_proof_approved'
+    | 'dues_proof_rejected'
     | 'id_pending'
     | 'complaint_new'
     | 'complaint_resolved'
@@ -210,7 +234,7 @@ export interface AdminDashboard {
   users: { total: number; owners: number; seekers: number; idPending?: number; verified?: number; banned?: number };
   offers: { open: number; assigned: number; awaiting: number; done: number; cancelled: number };
   // v4.14 — commission dues replace the subscriptions block
-  dues: { rate?: number; unpaidUsers: number; unpaidDA: number; duesDA: number; monthCommissionsDA: number };
+  dues: { rate?: number; unpaidUsers: number; unpaidDA: number; duesDA: number; monthCommissionsDA: number; proofsPending?: number };
   complaintsOpen: number;
   recentUsers: User[];
 }
@@ -224,7 +248,7 @@ export interface AdminStats {
   byCategory: { key: string; count: number }[];
   byWilaya: { wilaya: string; count: number }[];
   // v4.14 — commission dues replace the subscription charts
-  dues: { unpaidUsers: number; unpaidDA: number; duesDA: number; monthCommissionsDA: number };
+  dues: { unpaidUsers: number; unpaidDA: number; duesDA: number; monthCommissionsDA: number; proofsPending?: number };
   smart: {
     avgOfferDA: number;
     totalBudgetDA: number;

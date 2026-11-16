@@ -1,21 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
 import { LanguageProvider, useLang } from '@/lib/language-context';
 import { useApp } from '@/store/app';
 import { api, setToken } from '@/lib/api';
-import { User, Paged, AppNotification } from '@/lib/types';
-import { registerServiceWorker } from '@/lib/push';
+import { User } from '@/lib/types';
+import { registerServiceWorker, ensurePushSubscribed } from '@/lib/push';
 import { AuthScreen } from '@/components/app/screens/AuthScreen';
 import { InterestsScreen } from '@/components/app/screens/InterestsScreen';
 import { FeedScreen } from '@/components/app/screens/FeedScreen';
 import { MyTasksScreen } from '@/components/app/screens/MyTasksScreen';
 import { MyOffersScreen } from '@/components/app/screens/MyOffersScreen';
 import { CreateOfferScreen } from '@/components/app/screens/CreateOfferScreen';
-import { NotificationsScreen } from '@/components/app/screens/NotificationsScreen';
 import { ContactScreen } from '@/components/app/screens/ContactScreen';
 import { ProfileScreen } from '@/components/app/screens/ProfileScreen';
 import { AdminScreen } from '@/components/app/screens/AdminScreen';
@@ -25,7 +24,6 @@ import { LiveOfferWatcher, LiveOfferModal } from '@/components/app/screens/LiveO
 import { CompleteProfileModal } from '@/components/app/screens/CompleteProfileModal';
 import { BackToTop } from '@/components/app/BackToTop';
 import { BottomNav, TopBar } from '@/components/app/chrome';
-import { useQuery } from '@tanstack/react-query';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,7 +34,9 @@ const queryClient = new QueryClient({
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      {/* v4.15 — light is the landing mode on first visit; next-themes keeps every
+          explicit choice the user makes afterwards (per device + per account accent) */}
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
         <LanguageProvider>
           <Boot />
           <Toaster position="top-center" richColors closeButton />
@@ -53,7 +53,9 @@ function Boot() {
     registerServiceWorker();
     // reload keeps the user exactly where they were
     const savedScreen = sessionStorage.getItem('slekni.screen');
-    const savedTab = sessionStorage.getItem('slekni.tab');
+    let savedTab = sessionStorage.getItem('slekni.tab');
+    // v4.15 — the notifications page became a header panel: don't restore it as a tab
+    if (savedTab === 'notifications') savedTab = 'feed';
     if (savedTab) setTab(savedTab as never);
     const token = localStorage.getItem('slekni.token');
     if (!token) {
@@ -66,6 +68,8 @@ function Boot() {
       .get<User>('/me')
       .then((u) => {
         setUser(u);
+        // v4.15 — keep the background-push subscription alive on every start
+        ensurePushSubscribed();
         if (u.role === 'seeker' && u.interests.length === 0 && u.profileComplete !== false) setScreen('interests');
         else if (savedScreen === 'main' || savedScreen === 'interests') setScreen(savedScreen);
         else setScreen('main');
@@ -76,8 +80,8 @@ function Boot() {
         setScreen('auth');
       })
       .finally(() => setBooted(true));
-     
-  }, [setBooted, setUser, setScreen]);
+
+  }, [setBooted, setUser, setScreen, setTab]);
 
   // persist current location so a reload stays on the same page
   useEffect(() => {
@@ -129,7 +133,9 @@ function MainShell() {
   const tab = useApp((s) => s.tab);
   const setTab = useApp((s) => s.setTab);
   const detailOfferId = useApp((s) => s.detailOfferId);
-  const [creating, setCreating] = useState(false);
+  // v4.15 — "creating" moved to the shared store so overlays never stack
+  const creating = useApp((s) => s.creating);
+  const setCreating = useApp((s) => s.setCreating);
 
   if (!user) return null;
 
@@ -143,12 +149,10 @@ function MainShell() {
           <AdminScreen />
         ) : tab === 'contact' ? (
           <ContactScreen onClose={() => setTab('profile')} />
-        ) : tab === 'notifications' ? (
-          <NotificationsScreen />
         ) : tab === 'profile' ? (
           <ProfileScreen />
-        ) : tab === 'dues' ? (
-          // v4.14 — commission dues (replaces the subscription screen), available to every account
+        ) : tab === 'dues' && role === 'seeker' ? (
+          // v4.15 — dedicated dues page, exclusive to executor accounts
           <DuesScreen />
         ) : role === 'owner' ? (
           <MyOffersScreen onCreate={() => setCreating(true)} />
@@ -170,17 +174,28 @@ function MainShell() {
   );
 }
 
-/** Service-worker notification taps → open the related offer inside the app. */
+/** Service-worker messages → open offers / rebuild the push subscription. */
 function SwMessageBridge() {
   const openOfferDetail = useApp((s) => s.openOfferDetail);
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const data = e.data as { type?: string; offerId?: string } | null;
       if (data?.type === 'notificationclick' && data.offerId) openOfferDetail(data.offerId);
+      // v4.15 — the browser rotated the push subscription in the background:
+      // rebuild it and re-upload it to the server (silent)
+      if (data?.type === 'resubscribe-push') ensurePushSubscribed();
     };
     navigator.serviceWorker?.addEventListener('message', onMsg);
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
   }, [openOfferDetail]);
+
+  // pending notifications + pages catch up the moment the device reconnects
+  useEffect(() => {
+    const onOnline = () => ensurePushSubscribed();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
   return null;
 }
 

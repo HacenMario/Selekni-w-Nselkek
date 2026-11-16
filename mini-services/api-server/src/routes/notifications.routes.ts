@@ -4,8 +4,18 @@ import { Notification } from '../models/notification.model';
 import { PushSubscription } from '../models/pushsubscription.model';
 import { auth, AuthRequest } from '../middleware/auth';
 import { asyncH } from '../middleware/error';
+import { getVapidPublicKey } from '../services/push.service';
 
 const router = Router();
+
+/** v4.15 — public VAPID key so the browser can subscribe to background push
+ *  (self-healing: the server generates and persists the keypair when env vars
+ *  are absent, so this always works without deployment configuration). */
+router.get('/vapid-public', asyncH(async (_req: AuthRequest, res) => {
+  const publicKey = await getVapidPublicKey();
+  if (!publicKey) { res.status(503).json({ error: 'Push not available on this server', code: 'PUSH_UNAVAILABLE' }); return; }
+  res.json({ publicKey });
+}));
 
 router.get('/', auth, asyncH(async (req: AuthRequest, res) => {
   const page = Math.max(1, Number(req.query.page || 1));

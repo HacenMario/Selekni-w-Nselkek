@@ -1,33 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '@/store/app';
 import { useLang, LANGS } from '@/lib/language-context';
 import { useTheme } from 'next-themes';
 import { api, setToken } from '@/lib/api';
-import { Settings, Stats, MyDues, User, BLOOD_TYPES, BloodType } from '@/lib/types';
+import { Settings, Stats, User, BLOOD_TYPES, BloodType } from '@/lib/types';
 import { Flag } from '@/components/app/flags';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { DuesScreen } from '@/components/app/screens/DuesScreen';
+import { ClearInput } from '@/components/app/ClearableField';
 import { WilayaSelect } from '@/components/app/WilayaSelect';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { PwaSetupCard } from '@/components/app/PwaSetupCard';
-import { ContactScreen } from '@/components/app/screens/ContactScreen';
 import { compressAvatar, compressIdCard } from '@/lib/image';
 import { wilayaShort } from '@/lib/wilayas';
 import { TermsScreen } from '@/components/app/screens/TermsScreen';
 import { levelInfo } from '@/components/app/ui-bits';
-import { Mail } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
-  BadgeCheck, ChevronLeft, Coins, FileText, HandCoins, Handshake, IdCard, LogOut, Moon, ShieldCheck,
+  BadgeCheck, Coins, FileText, Handshake, IdCard, LogOut, Moon, ShieldCheck,
   Sparkles, Sun, TrendingUp, TriangleAlert, UserRound, Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -50,21 +47,11 @@ export function ProfileScreen() {
   const [avatar, setAvatar] = useState<{ mime: string; dataBase64: string } | null>(null);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [showSub, setShowSub] = useState(false);
-  const [showContact, setShowContact] = useState(false);
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api.get<Settings>('/settings'),
     staleTime: 60_000,
-  });
-
-  // v4.14 — commission dues summary (replaces the subscription query), all roles
-  const { data: duesData } = useQuery({
-    queryKey: ['my-dues'],
-    queryFn: () => api.get<MyDues>('/dues/mine'),
-    refetchInterval: 30_000,
-    enabled: !!user,
   });
 
   const { data: stats } = useQuery({
@@ -146,7 +133,8 @@ export function ProfileScreen() {
           <label className="cursor-pointer relative shrink-0">
             <UserAvatar user={user} size="h-20 w-20" textClass="text-2xl" />
             {avatar && (
-              <img src={`data:${avatar.mime};base64,${avatar.dataBase64}`} alt="" className="absolute inset-0 h-20 w-20 rounded-2xl object-cover" />
+              // v4.15 — object-contain: the freshly picked photo previews complete, never cropped
+              <img src={`data:${avatar.mime};base64,${avatar.dataBase64}`} alt="" className="absolute inset-0 h-20 w-20 rounded-2xl object-contain bg-background" />
             )}
             {savingAvatar && (
               <span className="absolute inset-0 h-20 w-20 rounded-2xl bg-black/35 flex items-center justify-center">
@@ -242,18 +230,8 @@ export function ProfileScreen() {
 
       {/* v4.9 — "contact us" moved to its own bottom-nav tab */}
 
-      {/* v4.14 — commission dues shortcut (replaces the owner subscription shortcut), all roles */}
-      <SectionCard icon={HandCoins} title={t('duesTitle')} action={
-        <Button variant="ghost" size="sm" onClick={() => setShowSub(true)} className="text-primary font-bold">
-          {t('details')}
-        </Button>
-      }>
-        <p className="text-sm text-muted-foreground break-words">
-          {(duesData?.totals.unpaidDA || 0) > 0
-            ? `${t('duesUnpaid')}: ${(duesData?.totals.unpaidDA || 0).toLocaleString('fr-DZ')} DA`
-            : t('duesAllPaidTitle')}
-        </p>
-      </SectionCard>
+      {/* v4.15 — the dues section moved OUT of "my account": executors have a
+          dedicated dues page in the bottom bar; clients see nothing dues-related */}
 
       {/* languages */}
       <SectionCard icon={UserRound} title={t('languages')}>
@@ -299,16 +277,16 @@ export function ProfileScreen() {
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="p-name">{t('name')}</Label>
-            <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl" />
+            <ClearInput id="p-name" value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="p-phone">{t('phone')}</Label>
-              <Input id="p-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-11 rounded-xl" />
+              <ClearInput id="p-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-11 rounded-xl" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="p-age">{t('age')}</Label>
-              <Input id="p-age" type="number" inputMode="numeric" min={12} max={100} value={age} onChange={(e) => setAge(e.target.value)} placeholder={t('agePlaceholder')} className="h-11 rounded-xl" />
+              <ClearInput id="p-age" type="number" inputMode="numeric" min={12} max={100} value={age} onChange={(e) => setAge(e.target.value)} placeholder={t('agePlaceholder')} className="h-11 rounded-xl" />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -393,20 +371,6 @@ export function ProfileScreen() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {showContact && <ContactScreen onClose={() => setShowContact(false)} />}
-
-      {showSub && (
-        <div className="fixed inset-0 z-[60] bg-background flex flex-col">
-          <div className="flex items-center gap-2 px-3 py-3 border-b">
-            <button onClick={() => setShowSub(false)} aria-label={t('back')} className="h-10 w-10 rounded-xl border bg-card flex items-center justify-center hover:bg-muted active:scale-90 transition-all">
-              <ChevronLeft className="h-5 w-5 rtl:rotate-180" />
-            </button>
-            <h2 className="font-bold">{t('duesTitle')}</h2>
-          </div>
-          <DuesScreen />
-        </div>
-      )}
     </div>
   );
 }
