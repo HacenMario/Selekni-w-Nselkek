@@ -1,6 +1,6 @@
 {
   "name": "selekni-w-nselkek",
-  "version": "4.15.0",
+  "version": "4.16.0",
   "private": true,
   "description": "Selekni w Nselkek — Algerian tasks marketplace PWA (Next.js frontend + Express/Mongoose API + bun runtime)",
   "scripts": {
@@ -18,7 +18,8 @@
     "test:v48": "bash scripts/test-v48-api.sh",
     "test:v49": "bash scripts/test-v49-api.sh",
     "test:v414": "bash scripts/test-v414-api.sh",
-    "test:v415": "bash scripts/test-v415-api.sh"
+    "test:v415": "bash scripts/test-v415-api.sh",
+    "test:v416": "bash scripts/test-v416-api.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

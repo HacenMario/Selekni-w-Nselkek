@@ -21,23 +21,27 @@ function adminNotify(userId: unknown, ar: string, fr: string, en: string, extra:
   notifyUsers([userId], 'system', { titleAr: ar, titleFr: fr, titleEn: en, ...extra }).catch(() => {});
 }
 
-/** Platform dues summary (v4.14 commission model): unpaid executors + totals. */
+/** Platform dues summary (v4.14 commission model): unpaid executors + totals.
+ *  v4.16 — paid/unpaid split comes from each task's duesState (admin-controlled);
+ *  confirming a task never pays it by itself. */
 async function duesSummary() {
   const settings = await getSettings();
   const rate = commissionRate(settings);
-  const [byUser, paidRows] = await Promise.all([
-    Offer.aggregate([
-      { $match: { status: 'done', completedAt: { $ne: null }, acceptedBy: { $ne: null } } },
-      { $group: { _id: '$acceptedBy', tasks: { $sum: 1 }, earned: { $sum: '$amountDA' } } },
-    ]),
-    MonthlySettlement.aggregate([{ $group: { _id: '$user', paid: { $sum: '$amountDA' } } }]),
+  const byUser = await Offer.aggregate([
+    { $match: { status: 'done', completedAt: { $ne: null }, acceptedBy: { $ne: null } } },
+    { $group: {
+      _id: '$acceptedBy',
+      tasks: { $sum: 1 },
+      earned: { $sum: '$amountDA' },
+      paidEarned: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, '$amountDA', 0] } },
+    } },
   ]);
-  const paidByUser = new Map<string, number>((paidRows as any[]).map((r) => [String(r._id), r.paid || 0]));
   let unpaidUsers = 0, unpaidDA = 0, duesDA = 0;
   for (const r of byUser as any[]) {
     const d = Math.round(((r.earned || 0) * rate) / 100);
     duesDA += d;
-    const unpaid = Math.max(0, d - (paidByUser.get(String(r._id)) || 0));
+    const paid = Math.round(((r.paidEarned || 0) * rate) / 100);
+    const unpaid = Math.max(0, d - paid);
     if (unpaid > 0) { unpaidUsers += 1; unpaidDA += unpaid; }
   }
   const monthStart = new Date();

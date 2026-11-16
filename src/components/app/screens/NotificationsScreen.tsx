@@ -251,9 +251,23 @@ export function NotificationsPanel({ open, onOpenChange }: { open: boolean; onOp
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="rounded-t-3xl h-[82dvh] max-w-lg mx-auto inset-x-0 p-0 flex flex-col" aria-describedby={undefined}>
-        <SheetHeader className="ps-5 pe-4 pt-4 pb-3 border-b space-y-0">
+      {/* v4.16 — the built-in sheet ✕ (a direct button child) is hidden for THIS
+          panel only ([&>button]:hidden) so it can no longer collide with the
+          clear-all button; the panel carries its own close button in the row */}
+      <SheetContent side="bottom" className="rounded-t-3xl h-[82dvh] max-w-lg mx-auto inset-x-0 p-0 flex flex-col [&>button]:hidden" aria-describedby={undefined}>
+        <SheetHeader className="ps-3 pe-4 pt-4 pb-3 border-b space-y-0">
           <div className="flex items-center gap-2">
+            {/* dedicated close button — sits at the row start, never overlapping */}
+            <button
+              onClick={() => onOpenChange(false)}
+              aria-label={t('close')}
+              title={t('close')}
+              className="h-10 w-10 rounded-xl border bg-card flex items-center justify-center hover:bg-muted active:scale-90 transition-all shrink-0"
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+              </svg>
+            </button>
             <span className="h-10 w-10 rounded-xl bg-primary/12 flex items-center justify-center shrink-0 relative">
               <BellRing className="h-5 w-5 text-primary" />
               {unread > 0 && (

@@ -218,23 +218,23 @@ export function OfferDetailSheet() {
                     <p className="text-sm font-semibold break-words">{offer.address || t('showAddress')}</p>
                   </div>
                 </div>
-                {/* v4.15 — precise GPS location: taps straight into Google Maps directions */}
+                {/* v4.16 — precise GPS location: opens the Google Maps APP directly
+                    (Android navigation scheme / iOS comgooglemaps) with a web fallback */}
                 {offer.location && (
                   <div className="flex items-start gap-3 p-3.5">
                     <Navigation className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-muted-foreground">{t('locationLabel')}</p>
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${offer.location.lat},${offer.location.lng}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openDirections(offer.location!.lat, offer.location!.lng)}
                         className="mt-0.5 inline-flex max-w-full items-center gap-1.5 rounded-xl border-2 border-primary/40 bg-primary/5 px-3 py-1.5 text-sm font-bold text-primary hover:border-primary active:scale-[0.98] transition-all break-all"
                         dir="ltr"
                       >
                         <MapPin className="h-3.5 w-3.5 shrink-0" />
                         <span className="break-all">{offer.location.lat}, {offer.location.lng}</span>
                         <span className="shrink-0 text-[11px]">— {t('openDirections')}</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -420,4 +420,36 @@ function OfferVideoPlayer({
       className="w-full max-h-72 rounded-2xl border bg-black"
     />
   );
+}
+
+/**
+ * v4.16 — open directions in the Google Maps APP installed on the user's device:
+ *  - Android: the `google.navigation:` scheme launches turn-by-turn in the app directly;
+ *  - iOS: the `comgooglemaps://` scheme opens the app's directions when installed
+ *    (a silent web-URL fallback fires only if the app never took over);
+ *  - desktop/unknown: the universal web directions URL in a new tab.
+ */
+export function openDirections(lat: number, lng: number): void {
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document);
+  const isAndroid = /Android/i.test(ua);
+  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+  if (isAndroid) {
+    // opens Google Maps navigation straight away (or the app picker on rare setups)
+    window.location.href = `google.navigation:q=${lat},${lng}&mode=d`;
+    return;
+  }
+  if (isIOS) {
+    let tookOver = false;
+    const takeover = () => { tookOver = true; };
+    window.addEventListener('pagehide', takeover, { once: true });
+    window.addEventListener('blur', takeover, { once: true });
+    document.addEventListener('visibilitychange', takeover, { once: true });
+    window.location.href = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
+    // the app never opened → fall back to the web directions (no App Store detour)
+    setTimeout(() => { if (!tookOver) window.location.href = webUrl; }, 1200);
+    return;
+  }
+  window.open(webUrl, '_blank', 'noopener');
 }

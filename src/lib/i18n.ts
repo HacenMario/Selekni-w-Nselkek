@@ -635,6 +635,19 @@ const ar: Dict = {
   offerAddressHint: 'اكتب العنوان نصاً أو حدّد الموقع بدقة عبر GPS — أو الاثنان معاً. يظهر الموقع الدقيق للمنفّذ كزر يفتح الاتجاهات مباشرة في تطبيق Google Maps.',
   schedulePatternHint: 'النمط: yyyy/mm/dd hh:mm — السنة بأربعة أرقام، والشهر واليوم والساعة والدقائق برقمين لكل منها.',
 
+  // ── v4.16 — per-task dues control, restored date picker, font card, push titles ──
+  videoMaxHint: 'أقصى حجم للفيديو: 50 MB',
+  duesPartiallyPaidBadge: 'مسدد جزئياً',
+  duesPendingBadge: 'معلقة',
+  duesTaskSection: 'مهام الشهر وحالة مستحقاتها',
+  fontSizeCard: 'حجم خط التطبيق',
+  fontSizeHint: 'اضبط حجم نصوص التطبيق ليناسب عينيك.',
+  notifDuesReminder: 'تذكير بالمستحقات',
+  notifDuesPaid: 'تم استلام المستحقات',
+  notifDuesProofSubmitted: 'إثبات سداد جديد',
+  notifDuesProofApproved: 'تم تأكيد سداد مستحقاتك',
+  notifDuesProofRejected: 'تعذر تأكيد إثبات السداد',
+
 };
 
 const fr: Dict = {
@@ -1250,6 +1263,19 @@ const fr: Dict = {
   offerAddressHint: 'Saisissez l’adresse en texte ou définissez l’emplacement par GPS — ou les deux. L’emplacement précis apparaît à l’exécutant comme un bouton ouvrant l’itinéraire Google Maps.',
   schedulePatternHint: 'Format : yyyy/mm/dd hh:mm — année sur 4 chiffres, mois, jour, heure et minutes sur 2 chiffres.',
 
+  // ── v4.16 — contrôle des commissions par tâche, sélecteur de date, carte police, titres push ──
+  videoMaxHint: 'Taille maximale de la vidéo : 50 Mo',
+  duesPartiallyPaidBadge: 'Partiellement réglé',
+  duesPendingBadge: 'En attente',
+  duesTaskSection: 'Tâches du mois et état de leurs commissions',
+  fontSizeCard: 'Taille du texte de l’application',
+  fontSizeHint: 'Ajustez la taille des textes pour vos yeux.',
+  notifDuesReminder: 'Rappel de commissions',
+  notifDuesPaid: 'Commissions reçues',
+  notifDuesProofSubmitted: 'Nouveau justificatif',
+  notifDuesProofApproved: 'Paiement des commissions confirmé',
+  notifDuesProofRejected: 'Justificatif non confirmé',
+
 };
 
 const en: Dict = {
@@ -1864,6 +1890,19 @@ const en: Dict = {
   openDirections: 'Directions',
   offerAddressHint: 'Type the address as text or capture the location via GPS — or both. The precise location reaches the executor as a button that opens Google Maps directions.',
   schedulePatternHint: 'Pattern: yyyy/mm/dd hh:mm — 4-digit year, 2-digit month, day, hour and minutes.',
+
+  // ── v4.16 — per-task dues control, restored date picker, font card, push titles ──
+  videoMaxHint: 'Maximum video size: 50 MB',
+  duesPartiallyPaidBadge: 'Partly paid',
+  duesPendingBadge: 'Pending',
+  duesTaskSection: 'Month tasks and their dues state',
+  fontSizeCard: 'App text size',
+  fontSizeHint: 'Adjust the app text size to suit your eyes.',
+  notifDuesReminder: 'Dues reminder',
+  notifDuesPaid: 'Dues received',
+  notifDuesProofSubmitted: 'New payment proof',
+  notifDuesProofApproved: 'Dues payment confirmed',
+  notifDuesProofRejected: 'Payment proof not confirmed',
 
 };
 
@@ -2485,6 +2524,19 @@ const tr: Dict = {
   offerAddressHint: 'Adresi metin olarak yazın veya GPS ile konumu belirleyin — ya da ikisini. Kesin konum, uygulayıcıya Google Maps yol tarifi açan bir düğme olarak görünür.',
   schedulePatternHint: 'Biçim: yyyy/mm/dd hh:mm — yıl 4, ay, gün, saat ve dakika 2 haneli.',
 
+  // ── v4.16 — görev başına alacak kontrolü, tarih seçici, yazı boyutu kartı, push başlıkları ──
+  videoMaxHint: 'Maksimum video boyutu: 50 MB',
+  duesPartiallyPaidBadge: 'Kısmen ödendi',
+  duesPendingBadge: 'Beklemede',
+  duesTaskSection: 'Ayın görevleri ve alacak durumları',
+  fontSizeCard: 'Uygulama yazı boyutu',
+  fontSizeHint: 'Uygulama yazılarını gözünüze göre ayarlayın.',
+  notifDuesReminder: 'Alacak hatırlatması',
+  notifDuesPaid: 'Alacaklar alındı',
+  notifDuesProofSubmitted: 'Yeni ödeme kanıtı',
+  notifDuesProofApproved: 'Alacak ödemesi onaylandı',
+  notifDuesProofRejected: 'Ödeme kanıtı onaylanmadı',
+
 };
 
 const es: Dict = {
@@ -3103,6 +3155,19 @@ const es: Dict = {
   openDirections: 'Indicaciones',
   offerAddressHint: 'Escribe la dirección como texto o fija la ubicación por GPS — o ambas. La ubicación precisa llega al ejecutor como un botón que abre las indicaciones de Google Maps.',
   schedulePatternHint: 'Formato: yyyy/mm/dd hh:mm — año de 4 cifras; mes, día, hora y minutos de 2.',
+
+  // ── v4.16 — control de comisiones por tarea, selector de fecha, tarjeta de texto, títulos push ──
+  videoMaxHint: 'Tamaño máximo del vídeo: 50 MB',
+  duesPartiallyPaidBadge: 'Parcialmente pagado',
+  duesPendingBadge: 'Pendiente',
+  duesTaskSection: 'Tareas del mes y estado de sus comisiones',
+  fontSizeCard: 'Tamaño del texto de la aplicación',
+  fontSizeHint: 'Ajusta el tamaño de los textos a tu vista.',
+  notifDuesReminder: 'Recordatorio de comisiones',
+  notifDuesPaid: 'Comisiones recibidas',
+  notifDuesProofSubmitted: 'Nuevo comprobante',
+  notifDuesProofApproved: 'Pago de comisiones confirmado',
+  notifDuesProofRejected: 'Comprobante no confirmado',
 
 };
 
@@ -3723,6 +3788,19 @@ const it: Dict = {
   offerAddressHint: 'Scrivi l’indirizzo come testo o imposta la posizione via GPS — o entrambe. La posizione precisa arriva all’esecutore come pulsante che apre le indicazioni di Google Maps.',
   schedulePatternHint: 'Formato: yyyy/mm/dd hh:mm — anno a 4 cifre; mese, giorno, ora e minuti a 2.',
 
+  // ── v4.16 — controllo commissioni per attività, selettore data, scheda testo, titoli push ──
+  videoMaxHint: 'Dimensione massima del video: 50 MB',
+  duesPartiallyPaidBadge: 'Parzialmente saldato',
+  duesPendingBadge: 'In sospeso',
+  duesTaskSection: 'Attività del mese e stato delle commissioni',
+  fontSizeCard: 'Dimensione del testo dell’app',
+  fontSizeHint: 'Regola la dimensione dei testi per i tuoi occhi.',
+  notifDuesReminder: 'Promemoria commissioni',
+  notifDuesPaid: 'Commissioni ricevute',
+  notifDuesProofSubmitted: 'Nuovo giustificativo',
+  notifDuesProofApproved: 'Pagamento commissioni confermato',
+  notifDuesProofRejected: 'Giustificativo non confermato',
+
 };
 
 const de: Dict = {
@@ -4341,6 +4419,19 @@ const de: Dict = {
   openDirections: 'Route',
   offerAddressHint: 'Gib die Adresse als Text ein oder lege den Standort per GPS fest — oder beides. Der genaue Standort erreicht den Ausführenden als Button, der die Google-Maps-Route öffnet.',
   schedulePatternHint: 'Muster: yyyy/mm/dd hh:mm — Jahr 4-stellig; Monat, Tag, Stunde und Minute 2-stellig.',
+
+  // ── v4.16 — Gebührenkontrolle pro Aufgabe, Datumsauswahl, Schriftkarte, Push-Titel ──
+  videoMaxHint: 'Maximale Videogröße: 50 MB',
+  duesPartiallyPaidBadge: 'Teilweise bezahlt',
+  duesPendingBadge: 'Ausstehend',
+  duesTaskSection: 'Aufgaben des Monats und deren Gebührenstatus',
+  fontSizeCard: 'App-Textgröße',
+  fontSizeHint: 'Passe die Textgröße an deine Augen an.',
+  notifDuesReminder: 'Gebühren-Erinnerung',
+  notifDuesPaid: 'Gebühren erhalten',
+  notifDuesProofSubmitted: 'Neuer Zahlungsnachweis',
+  notifDuesProofApproved: 'Gebührenzahlung bestätigt',
+  notifDuesProofRejected: 'Zahlungsnachweis nicht bestätigt',
 
 };
 
@@ -4961,6 +5052,19 @@ const ru: Dict = {
   offerAddressHint: 'Введите адрес текстом или укажите место через GPS — или и то и другое. Точное место дойдёт до исполнителя как кнопка, открывающая маршрут в Google Maps.',
   schedulePatternHint: 'Формат: yyyy/mm/dd hh:mm — год из 4 цифр; месяц, день, час и минуты — из 2.',
 
+  // ── v4.16 — контроль задолженностей по заданиям, выбор даты, карта шрифта, заголовки push ──
+  videoMaxHint: 'Максимальный размер видео: 50 МБ',
+  duesPartiallyPaidBadge: 'Частично оплачено',
+  duesPendingBadge: 'Ожидает',
+  duesTaskSection: 'Задания месяца и состояние их задолженностей',
+  fontSizeCard: 'Размер текста приложения',
+  fontSizeHint: 'Настройте размер текста под ваши глаза.',
+  notifDuesReminder: 'Напоминание о задолженности',
+  notifDuesPaid: 'Задолженность получена',
+  notifDuesProofSubmitted: 'Новое подтверждение оплаты',
+  notifDuesProofApproved: 'Оплата задолженности подтверждена',
+  notifDuesProofRejected: 'Подтверждение не подтверждено',
+
 };
 
 const zh: Dict = {
@@ -5579,6 +5683,19 @@ const zh: Dict = {
   openDirections: '导航',
   offerAddressHint: '可以文字填写地址，或通过 GPS 设定精确位置 — 也可两者兼用。精确位置会以按钮形式呈现给执行者，点击直达 Google Maps 导航。',
   schedulePatternHint: '格式：yyyy/mm/dd hh:mm — 年份 4 位，月、日、时、分各 2 位。',
+
+  // ── v4.16 — 按任务控制应付款、日期选择器、字体卡片、推送标题 ──
+  videoMaxHint: '视频最大尺寸：50 MB',
+  duesPartiallyPaidBadge: '部分已付',
+  duesPendingBadge: '待定',
+  duesTaskSection: '本月任务及其应付款状态',
+  fontSizeCard: '应用文字大小',
+  fontSizeHint: '按您的需要调整应用文字大小。',
+  notifDuesReminder: '应付款提醒',
+  notifDuesPaid: '已收到应付款',
+  notifDuesProofSubmitted: '新付款凭证',
+  notifDuesProofApproved: '应付款已确认',
+  notifDuesProofRejected: '付款凭证未确认',
 
 };
 

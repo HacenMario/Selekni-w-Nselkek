@@ -213,20 +213,17 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
           <p className="text-[11px] text-muted-foreground leading-snug break-words">{t('offerAddressHint')}</p>
         </div>
 
-        {/* v4.15 — the pattern is enforced: yyyy/mm/dd hh:mm (numeric keyboard) */}
+        {/* v4.16 — the proposed date/time is a native date+time picker again:
+            the user simply picks the date AND the time that suit them */}
         <div className="space-y-1.5">
           <Label htmlFor="o-date">{t('scheduledAt')} ({t('optional')})</Label>
-          <ClearInput
+          <input
             id="o-date"
+            type="datetime-local"
             value={scheduledAt}
-            onChange={(e) => setScheduledAt(formatSchedule(e.target.value))}
-            className="h-11 rounded-xl"
-            placeholder="yyyy/mm/dd hh:mm"
-            inputMode="numeric"
-            dir="ltr"
-            maxLength={16}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            className="h-12 w-full rounded-xl border-2 bg-card px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/40"
           />
-          <p className="text-[11px] text-muted-foreground leading-snug break-words">{t('schedulePatternHint')}</p>
         </div>
 
         {/* images — max 10, compressed automatically */}
@@ -264,6 +261,9 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
         {/* video — GridFS, capped at 50 MB to protect the free MongoDB tier */}
         <div className="space-y-2">
           <Label>{t('offerVideo')}</Label>
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+            <Film className="h-3 w-3" /> {t('videoMaxHint')}
+          </p>
           {video ? (
             <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
               <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -326,32 +326,12 @@ export function CreateOfferScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
-/* ---------- v4.15 helpers: date pattern + GPS-free precise location ---------- */
+/* ---------- v4.16 helpers: schedule conversion + GPS ---------- */
 
-/**
- * Format the schedule field strictly as yyyy/mm/dd hh:mm while typing:
- * digits only are collected, separators are inserted automatically
- * (4-digit year, 2-digit month, 2-digit day, 2-digit hour, 2-digit minutes).
- */
-function formatSchedule(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 12);
-  let out = digits.slice(0, 4);
-  if (digits.length > 4) out += '/' + digits.slice(4, 6);
-  if (digits.length > 6) out += '/' + digits.slice(6, 8);
-  if (digits.length > 8) out += ' ' + digits.slice(8, 10);
-  if (digits.length > 10) out += ':' + digits.slice(10, 12);
-  return out;
-}
-
-/** 'yyyy/mm/dd hh:mm' → ISO string, or null when empty/invalid. */
+/** datetime-local value ('YYYY-MM-DDTHH:mm') → ISO string, or null when empty. */
 function scheduledToLocalIso(value: string): string | null {
   if (!value) return null;
-  const m = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/.exec(value);
-  if (!m) return null;
-  const nums = m.map(Number);
-  const [, y, mo, d, h, mi] = nums;
-  const dt = new Date(y, mo - 1, d, h, mi);
-  // reject impossible dates (31/02…) via a round-trip check
-  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
   return dt.toISOString();
 }

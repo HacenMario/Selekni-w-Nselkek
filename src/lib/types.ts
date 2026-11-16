@@ -115,12 +115,25 @@ export interface Settings {
 export interface DuesMonth {
   month: string; // 'YYYY-MM'
   tasksCount: number;
+  /** v4.16 — how many of the month's tasks the administration marked paid. */
+  paidTasks?: number;
   earnedDA: number;
   commissionDA: number;
   paidDA: number;
   unpaidDA: number;
   paidAt: string | null;
   note?: string;
+}
+
+/** v4.16 — one completed task with its admin-controlled dues state. */
+export interface DuesTask {
+  _id: string;
+  title: string;
+  amountDA: number;
+  commissionDA: number;
+  duesState: 'pending' | 'paid';
+  duesPaidAt?: string | null;
+  completedAt?: string;
 }
 
 /** v4.15 — one payment-proof submission and its review state. */

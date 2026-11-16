@@ -31,6 +31,8 @@ export interface ISettings extends Document {
   };
   // v4.15 — self-healing web-push keys (generated once when env vars are absent)
   vapid?: { publicKey?: string; privateKey?: string };
+  // v4.16 — one-time migration: historical settlements mark their month's tasks paid
+  duesMigrated?: boolean;
   packages: ISubPackage[];
   categories: { key: string; label: { ar: string; fr: string; en: string; tr?: string; es?: string; it?: string; de?: string; ru?: string; zh?: string }; icon: string }[];
   // v4.6 — "contact us" page, edited from the admin account
@@ -109,6 +111,7 @@ const SettingsSchema = new Schema<ISettings>(
       default: { ccp: '0040740276', ccpKey: '57', rip: '00799999004074027657' },
     },
     vapid: { type: { publicKey: String, privateKey: String }, default: {} },
+    duesMigrated: { type: Boolean, default: false },
     packages: { type: [{ key: String, name: { ar: String, fr: String, en: String }, priceDA: Number, durationDays: Number, maxActiveOffers: Number, active: Boolean, imageGridId: String }], default: DEFAULT_PACKAGES },
     // v4.6 — "contact us" page, edited from the admin account
     contact: {

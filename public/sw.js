@@ -1,5 +1,6 @@
 /* Slekni service worker: web-push display + offline shell */
-const CACHE = 'slekni-v4-15';
+importScripts('/sw-i18n.js');
+const CACHE = 'slekni-v4-16';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png?v=3', '/icons/icon-512.png?v=3'];
 
 self.addEventListener('install', (event) => {
@@ -37,25 +38,45 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-/* Push notifications — always-on background delivery, in the user's chosen language */
-const TITLES = {
-  new_offer_match: { ar: 'عرض جديد يناسبك!', fr: 'Nouvelle offre !', en: 'New offer for you!' },
-  offer_accepted: { ar: 'تم قبول عرضك', fr: 'Offre acceptée', en: 'Your offer was accepted' },
-  offer_awaiting: { ar: 'بانتظار تأكيدك', fr: 'En attente de confirmation', en: 'Awaiting your confirmation' },
-  offer_done: { ar: 'تم تأكيد الإنجاز', fr: 'Travail confirmé', en: 'Task completion confirmed' },
-  offer_cancelled: { ar: 'أُلغي عرض', fr: 'Offre annulée', en: 'An offer was cancelled' },
-  subscription_pending: { ar: 'طلب اشتراك جديد', fr: 'Nouvelle demande', en: 'New subscription request' },
-  subscription_confirmed: { ar: 'تم تأكيد اشتراكك', fr: 'Abonnement confirmé', en: 'Subscription confirmed' },
-  subscription_rejected: { ar: 'تم رفض اشتراكك', fr: 'Abonnement refusé', en: 'Subscription rejected' },
-  // v4.15 — dues payment-proof lifecycle
-  dues_proof_submitted: { ar: 'إثبات سداد جديد', fr: 'Nouveau justificatif', en: 'New payment proof' },
-  dues_proof_approved: { ar: 'تم تأكيد سداد مستحقاتك', fr: 'Paiement confirmé', en: 'Dues payment confirmed' },
-  dues_proof_rejected: { ar: 'تعذر تأكيد إثبات السداد', fr: 'Justificatif refusé', en: 'Payment proof rejected' },
-  id_pending: { ar: 'طلب توثيق حساب جديد', fr: 'Nouvelle demande de vérification', en: 'New verification request' },
-  complaint_new: { ar: 'شكوى جديدة', fr: 'Nouvelle réclamation', en: 'New complaint' },
-  complaint_resolved: { ar: 'تمت معالجة شكواك', fr: 'Réclamation traitée', en: 'Your complaint was resolved' },
-  broadcast: { ar: 'إعلان', fr: 'Annonce', en: 'Announcement' },
-  system: { ar: 'سلكني ونسلكك', fr: 'Selekni w Nselkek', en: 'Selekni w Nselkek' },
+/* Push notifications — always-on background delivery, richly detailed and in the
+   reader's chosen language (all 9) via SW_NOTIF (public/sw-i18n.js). */
+const APP_NAME = { ar: 'سلكني ونسلكك', fr: 'Selekni w Nselkek', en: 'Selekni w Nselkek' };
+
+/** amount → grouped digits (the templates already carry the DA / دج unit). */
+function fmt(n) {
+  try { return Number(n || 0).toLocaleString('fr-DZ'); } catch { return String(n || 0); }
+}
+
+/** v4.16 — payload data → template parameters, mirroring the in-app notification texts. */
+const PARAMS = {
+  new_offer_match: (d) => ({ actor: d.actorName || d.actor || '', title: d.offerTitle || '', amount: fmt(d.amountDA) }),
+  offer_accepted: (d) => ({ actor: d.actorName || d.actor || '', title: d.offerTitle || '' }),
+  offer_awaiting: (d) => ({ actor: d.actorName || d.actor || '', title: d.offerTitle || '' }),
+  offer_done: (d) => ({ title: d.offerTitle || '', amount: fmt(d.amountDA) }),
+  offer_cancelled: (d) => ({ title: d.offerTitle || '' }),
+  dues_reminder: (d) => ({ amount: fmt(d.amountDA), month: d.month || '' }),
+  dues_paid: (d) => ({ amount: fmt(d.amountDA), month: d.month || '' }),
+  dues_proof_submitted: (d) => ({ actor: d.actorName || d.actor || '', amount: fmt(d.amountDA), month: d.month || '' }),
+  dues_proof_approved: (d) => ({ amount: fmt(d.amountDA), month: d.month || '' }),
+  dues_proof_rejected: (d) => ({ month: d.month || '' }),
+  id_pending: (d) => ({ actor: d.actorName || d.actor || '' }),
+  complaint_new: (d) => ({ actorName: d.actorName || d.actor || '', subject: d.subject || '' }),
+  complaint_resolved: (d) => ({ subject: d.subject || '' }),
+};
+
+function fill(tpl, params) {
+  return String(tpl || '').replace(/\{(\w+)\}/g, (m, k) => (params && params[k] !== undefined && params[k] !== '') ? params[k] : m);
+}
+
+/** v4.16 — exact deep-link routing on tap (mirrors the in-app notification routing). */
+const NAV = {
+  dues_reminder: 'dues',
+  dues_paid: 'dues',
+  dues_proof_approved: 'dues',
+  dues_proof_rejected: 'dues',
+  dues_proof_submitted: 'admin-dues',
+  id_pending: 'id-review',
+  complaint_new: 'admin-complaints',
 };
 
 /** Ask any open app window for the UI language (the page answers via postMessage). */
@@ -93,20 +114,35 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     getUiLang().then((lang) => {
-      const titles = TITLES[type] || TITLES.system;
-      const title = pickL(d, 'title', lang) || titles[lang] || titles.ar || 'Selekni w Nselkek';
-      let body = pickL(d, 'body', lang) || d.offerTitle || '';
-      if (type === 'complaint_resolved' && d.resolution) body = `${d.subject || ''} — ${d.resolution}`;
-      if (type === 'complaint_new' && d.subject) body = `${d.actorName || ''}: ${d.subject}`;
-      const offerId = d.offerId || '';
+      const pack = self.SW_NOTIF && (self.SW_NOTIF[lang] || self.SW_NOTIF.ar);
+      const entry = pack && pack[type];
+      let title;
+      let body;
+      if (type === 'broadcast' || type === 'system') {
+        // administration messages carry their own per-language data (Ar/Fr/En)
+        title = pickL(d, 'title', lang) || APP_NAME[lang] || APP_NAME.en;
+        body = pickL(d, 'body', lang);
+      } else if (entry) {
+        title = entry.t;
+        body = fill(entry.b, PARAMS[type] ? PARAMS[type](d) : {});
+      } else {
+        // unknown type: a neutral title with whatever detail the payload carries
+        title = APP_NAME[lang] || APP_NAME.en;
+        body = d.offerTitle || d.subject || pickL(d, 'title', lang) || '';
+      }
+      const offerId = d.offerId ? String(d.offerId) : '';
+      const month = d.month ? String(d.month) : '';
+      const nav = NAV[type] || (offerId ? 'offer' : '');
 
       return self.registration.showNotification(String(title), {
-        body: String(body).slice(0, 180),
-        icon: '/icons/icon-192.png?v=3',
-        badge: '/icons/icon-192.png?v=3',
-        vibrate: [100, 50, 100],
-        data: { type, offerId },
-        tag: offerId || type,
+        body: String(body || '').slice(0, 240),
+        icon: '/icons/icon-192.png?v=4',
+        badge: '/icons/icon-192.png?v=4',
+        vibrate: [90, 50, 90],
+        lang, // helps the OS pick the right rendering/voice for the text
+        tag: `${type}:${offerId || month || ''}`.slice(0, 64),
+        renotify: true, // same kind of event re-alerts instead of silently replacing
+        data: { type, offerId, month, nav },
       });
     })
   );
@@ -114,16 +150,19 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const offerId = event.notification.data?.offerId;
+  const data = event.notification.data || {};
+  const offerId = data.offerId;
+  const nav = data.nav || (offerId ? 'offer' : '');
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const client of list) {
         if ('focus' in client) {
-          client.postMessage({ type: 'notificationclick', offerId });
+          client.postMessage({ type: 'notificationclick', offerId, nav });
           return client.focus();
         }
       }
-      return self.clients.openWindow(offerId ? `/?offer=${offerId}` : '/');
+      const q = nav ? `?nav=${encodeURIComponent(nav)}${offerId ? `&offer=${encodeURIComponent(offerId)}` : ''}` : (offerId ? `/?offer=${encodeURIComponent(offerId)}` : '/');
+      return self.clients.openWindow(nav || offerId ? `/${q}` : '/');
     })
   );
 });

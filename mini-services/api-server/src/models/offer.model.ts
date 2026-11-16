@@ -39,6 +39,15 @@ export interface IOffer extends Document {
   acceptedBy?: unknown;
   acceptedAt?: Date;
   completedAt?: Date;
+  /**
+   * v4.16 — per-task commission state, fully controlled by the administration:
+   * every completed task starts 'pending'; ONLY an explicit administration
+   * action (per-task toggle, month settle, or an approved payment proof) marks
+   * it 'paid'. Confirming the task NEVER marks the dues as paid by itself.
+   */
+  duesState?: 'pending' | 'paid';
+  duesPaidAt?: Date;
+  duesPaidBy?: unknown;
   cancelledBy?: 'owner' | 'worker' | 'admin';
   cancelReason?: string;
   createdAt: Date;
@@ -87,6 +96,10 @@ const OfferSchema = new Schema<IOffer>(
     acceptedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     acceptedAt: { type: Date },
     completedAt: { type: Date },
+    // v4.16 — commission state per task (admin-controlled; never auto-paid)
+    duesState: { type: String, enum: ['pending', 'paid'], default: 'pending', index: true },
+    duesPaidAt: { type: Date },
+    duesPaidBy: { type: Schema.Types.ObjectId, ref: 'User' },
     cancelledBy: { type: String, enum: ['owner', 'worker', 'admin'] },
     cancelReason: { type: String, maxlength: 300 },
   },

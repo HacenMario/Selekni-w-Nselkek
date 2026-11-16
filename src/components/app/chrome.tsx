@@ -8,7 +8,6 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { AppNotification, Paged } from '@/lib/types';
 import { LanguageMenu } from '@/components/app/LanguageMenu';
-import { FontSizeControl } from '@/components/app/FontSizeControl';
 import { ThemeDialog } from '@/components/app/ThemeDialog';
 import { NotificationsPanel } from '@/components/app/screens/NotificationsScreen';
 
@@ -16,8 +15,6 @@ export function TopBar() {
   const { t } = useLang();
   const user = useApp((s) => s.user);
   const setTab = useApp((s) => s.setTab);
-  const back = useApp((s) => s.back);
-  const tabHistory = useApp((s) => s.tabHistory);
   const bumpFeed = useApp((s) => s.bumpFeed);
   const notifPanelOpen = useApp((s) => s.notifPanelOpen);
   const setNotifPanel = useApp((s) => s.setNotifPanel);
@@ -31,41 +28,28 @@ export function TopBar() {
     refetchInterval: 15_000,
   });
   const unread = data?.unreadCount || 0;
-  const canGoBack = tabHistory.length > 0;
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
       <div className="max-w-lg mx-auto flex items-center gap-2 px-2.5 h-14">
-        {/* v4.15 — elegant back arrow once there is in-app history, otherwise the logo returns home */}
-        {canGoBack ? (
-          <button
-            onClick={back}
-            aria-label={t('back')}
-            title={t('back')}
-            className="h-9 w-9 rounded-xl border bg-card flex items-center justify-center hover:bg-muted active:scale-90 transition-all shrink-0"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180">
-              <path d="M19 12H5" />
-              <path d="m12 19-7-7 7-7" />
-            </svg>
-          </button>
-        ) : (
-          <button
-            onClick={() => { setTab('profile'); bumpFeed(); }}
-            aria-label={t('profile')}
-            title={t('profile')}
-            className="h-9 w-9 rounded-xl overflow-hidden shadow-md shadow-primary/20 shrink-0 hover:scale-105 active:scale-95 transition-transform"
-          >
-            <img src="/icons/icon-192.png?v=4" alt={t('appName')} className="h-9 w-9 object-cover" draggable={false} />
-          </button>
-        )}
+        {/* v4.16 — the app logo stays visible at all times, next to the app name
+            (the v4.15 back arrow and the font-size control were removed from the header) */}
+        <button
+          onClick={() => { setTab('profile'); bumpFeed(); }}
+          aria-label={t('profile')}
+          title={t('profile')}
+          className="h-9 w-9 rounded-xl overflow-hidden shadow-md shadow-primary/20 shrink-0 hover:scale-105 active:scale-95 transition-transform"
+        >
+          <img src="/icons/icon-192.png?v=4" alt={t('appName')} className="h-9 w-9 object-cover" draggable={false} />
+        </button>
         <button
           onClick={() => { setTab('profile'); bumpFeed(); }}
           className="min-w-0 flex-1 text-start"
           aria-label={t('appName')}
         >
-          <p className="font-extrabold text-[15px] leading-tight break-words">{t('appName')}</p>
-          <p className="text-[11px] text-muted-foreground leading-tight break-words">
+          {/* v4.16 — truncate instead of wrapping: the name keeps its shape at every font size */}
+          <p className="font-extrabold text-[15px] leading-tight truncate">{t('appName')}</p>
+          <p className="text-[11px] text-muted-foreground leading-tight truncate">
             {user?.role === 'owner' ? t('roleOwner') : user?.isSuperAdmin ? t('roleAdmin') : t('roleSeeker')}
           </p>
         </button>
@@ -84,9 +68,6 @@ export function TopBar() {
             </span>
           )}
         </button>
-
-        {/* A− / A+ site-wide text size */}
-        <FontSizeControl />
 
         {/* language dropdown with official flags + On/Off switches */}
         <LanguageMenu />

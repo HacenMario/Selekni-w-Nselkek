@@ -73,6 +73,18 @@ function Boot() {
         if (u.role === 'seeker' && u.interests.length === 0 && u.profileComplete !== false) setScreen('interests');
         else if (savedScreen === 'main' || savedScreen === 'interests') setScreen(savedScreen);
         else setScreen('main');
+        // v4.16 — cold start from a tapped phone notification: /?nav=dues&offer=…
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const nav = params.get('nav');
+          const offerId = params.get('offer');
+          if (nav || offerId) {
+            routeNotificationNav(nav, Boolean(offerId), Boolean(u.isSuperAdmin));
+            if (offerId) useApp.getState().openOfferDetail(offerId);
+            // clean the URL so a reload does not re-trigger the routing
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } catch {}
       })
       .catch(() => {
         setToken(null);
@@ -174,20 +186,25 @@ function MainShell() {
   );
 }
 
-/** Service-worker messages → open offers / rebuild the push subscription. */
+/** Service-worker messages → navigate to the exact page / open offers / rebuild the push subscription. */
 function SwMessageBridge() {
   const openOfferDetail = useApp((s) => s.openOfferDetail);
+  const isSuperAdmin = useApp((s) => Boolean(s.user?.isSuperAdmin));
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      const data = e.data as { type?: string; offerId?: string } | null;
-      if (data?.type === 'notificationclick' && data.offerId) openOfferDetail(data.offerId);
+      const data = e.data as { type?: string; offerId?: string; nav?: string } | null;
+      // v4.16 — a tapped phone notification lands on its exact page
+      if (data?.type === 'notificationclick') {
+        routeNotificationNav(data.nav, Boolean(data.offerId), isSuperAdmin);
+        if (data.offerId) openOfferDetail(data.offerId);
+      }
       // v4.15 — the browser rotated the push subscription in the background:
       // rebuild it and re-upload it to the server (silent)
       if (data?.type === 'resubscribe-push') ensurePushSubscribed();
     };
     navigator.serviceWorker?.addEventListener('message', onMsg);
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
-  }, [openOfferDetail]);
+  }, [openOfferDetail, isSuperAdmin]);
 
   // pending notifications + pages catch up the moment the device reconnects
   useEffect(() => {
@@ -197,6 +214,21 @@ function SwMessageBridge() {
   }, []);
 
   return null;
+}
+
+/** v4.16 — shared deep-link routing (SW tap + cold-start ?nav= URL). */
+function routeNotificationNav(nav: string | null | undefined, hasOffer: boolean, isSuperAdmin: boolean): void {
+  const st = useApp.getState();
+  switch (nav) {
+    case 'dues': st.setTab('dues'); break;
+    case 'admin-dues': st.setTab('admin'); st.setAdminTab('dues'); break;
+    case 'admin-complaints': st.setTab('admin'); st.setAdminTab('complaints'); break;
+    case 'id-review':
+      if (isSuperAdmin) { st.setTab('admin'); st.setAdminTab('users'); }
+      else st.setTab('profile');
+      break;
+    default: if (hasOffer) st.bumpFeed(); break;
+  }
 }
 
 function CreateOverlay({ onClose }: { onClose: () => void }) {

@@ -16,6 +16,7 @@ import { ClearInput } from '@/components/app/ClearableField';
 import { WilayaSelect } from '@/components/app/WilayaSelect';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { PwaSetupCard } from '@/components/app/PwaSetupCard';
+import { FontSizeControl } from '@/components/app/FontSizeControl';
 import { compressAvatar, compressIdCard } from '@/lib/image';
 import { wilayaShort } from '@/lib/wilayas';
 import { TermsScreen } from '@/components/app/screens/TermsScreen';
@@ -24,7 +25,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
-  BadgeCheck, Coins, FileText, Handshake, IdCard, LogOut, Moon, ShieldCheck,
+  AArrowUp, BadgeCheck, Coins, FileText, Handshake, IdCard, LogOut, Moon, ShieldCheck,
   Sparkles, Sun, TrendingUp, TriangleAlert, UserRound, Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -269,6 +270,14 @@ export function ProfileScreen() {
               <Moon className="h-4 w-4" />
             </button>
           </div>
+        </div>
+      </SectionCard>
+
+      {/* v4.16 — text-size control moved out of the header into "my account" */}
+      <SectionCard icon={AArrowUp} title={t('fontSizeCard')}>
+        <div className="flex items-center justify-between py-1 gap-3">
+          <span className="text-sm text-muted-foreground break-words min-w-0">{t('fontSizeHint')}</span>
+          <div className="shrink-0"><FontSizeControl /></div>
         </div>
       </SectionCard>
 

@@ -223,6 +223,8 @@ function MonthRow({
   proof?: DuesProof;
 }) {
   const paid = m.unpaidDA <= 0 && m.commissionDA > 0;
+  // v4.16 — the administration pays task by task: a month can be partly settled
+  const partial = m.unpaidDA > 0 && (m.paidDA || 0) > 0;
   return (
     <div
       className={`rounded-2xl border bg-card p-4 space-y-2.5 card-hover animate-in fade-in slide-in-from-bottom-2 duration-300 ${m.unpaidDA > 0 ? 'border-amber-300 dark:border-amber-700' : ''}`}
@@ -233,6 +235,10 @@ function MonthRow({
         {paid ? (
           <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-0 shrink-0 gap-1">
             <BadgeCheck className="h-3 w-3" /> {t('duesPaidBadge')}
+          </Badge>
+        ) : partial ? (
+          <Badge variant="outline" className="border-sky-300 text-sky-700 dark:text-sky-300 shrink-0">
+            {t('duesPartiallyPaidBadge')}
           </Badge>
         ) : (
           <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-300 shrink-0">

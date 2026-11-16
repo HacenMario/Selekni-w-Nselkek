@@ -6,7 +6,7 @@ import { useApp, AdminTab } from '@/store/app';
 import { useLang } from '@/lib/language-context';
 import { api, idCardUrl, mediaUrl } from '@/lib/api';
 import { badgeDelta, getClicked, markClicked, markTabSeen } from '@/lib/admin-badges';
-import { AdminDashboard, AdminDuesRow, AdminDuesSummary, AdminStats, Complaint, DuesMonth, DuesProof, MyDues, Offer, Paged, PublicUser, Settings, User } from '@/lib/types';
+import { AdminDashboard, AdminDuesRow, AdminDuesSummary, AdminStats, Complaint, DuesMonth, DuesProof, DuesTask, MyDues, Offer, Paged, PublicUser, Settings, User } from '@/lib/types';
 import { AmountPill, Pager, StatusBadge, timeAgo } from '@/components/app/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1448,7 +1448,9 @@ function SettleDialog({
   );
 }
 
-/** Per-month breakdown of one executor — reopen mistakes, settle, remind. */
+/** Per-month breakdown of one executor — reopen mistakes, settle, remind.
+ *  v4.16 — every task of the month is listed with its dues state and a one-tap
+ *  toggle (معلقة ↔ مسددة) giving the administration full per-task control. */
 function UserMonthsDialog({
   userId,
   onClose,
@@ -1460,14 +1462,14 @@ function UserMonthsDialog({
 }) {
   const { t, lang } = useLang();
   const qc = useQueryClient();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['admin-dues-user', userId],
-    queryFn: () => api.get<{ rate: number; user: { name: string }; months: DuesMonth[]; totals: MyDues['totals'] }>(`/dues/admin/user/${userId}`),
+    queryFn: () => api.get<{ rate: number; user: { name: string }; months: (DuesMonth & { tasks?: DuesTask[] })[]; totals: MyDues['totals'] }>(`/dues/admin/user/${userId}`),
   });
 
-  async function run(fn: () => Promise<unknown>) {
-    setBusy(true);
+  async function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
     try {
       await fn();
       qc.invalidateQueries({ queryKey: ['admin-dues-user', userId] });
@@ -1475,8 +1477,13 @@ function UserMonthsDialog({
     } catch {
       toast.error(t('error'));
     } finally {
-      setBusy(false);
+      setBusy('');
     }
+  }
+
+  /** Flip ONE task's dues state between pending and paid (admin control). */
+  function toggleTask(taskId: string, next: 'pending' | 'paid') {
+    run(`task-${taskId}`, () => api.post(`/dues/admin/task/${taskId}/state`, { state: next }));
   }
 
   return (
@@ -1493,14 +1500,20 @@ function UserMonthsDialog({
             {(data?.months || []).length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">{t('duesNoTasks')}</p>
             ) : (
-              data?.months.map((m) => (
+              data?.months.map((m) => {
+                // v4.16 — precise badge: fully paid / partially paid / pending
+                const full = m.commissionDA > 0 && m.unpaidDA <= 0;
+                const partial = m.unpaidDA > 0 && (m.paidDA || 0) > 0;
+                return (
                 <div key={m.month} className={`rounded-xl border p-3 space-y-2 ${m.unpaidDA > 0 ? 'border-amber-300 dark:border-amber-700' : ''}`}>
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-bold text-sm">{monthLabel(m.month, lang)}</p>
-                    {m.unpaidDA > 0 ? (
-                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300 shrink-0">{t('duesUnpaidBadge')}</Badge>
-                    ) : (
+                    {full ? (
                       <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-0 text-[10px] shrink-0">{t('duesPaidBadge')}</Badge>
+                    ) : partial ? (
+                      <Badge variant="outline" className="text-[10px] border-sky-300 text-sky-700 dark:text-sky-300 shrink-0">{t('duesPartiallyPaidBadge')}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300 shrink-0">{t('duesUnpaidBadge')}</Badge>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 text-xs">
@@ -1512,24 +1525,64 @@ function UserMonthsDialog({
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
-                      disabled={busy || m.unpaidDA <= 0}
-                      onClick={() => run(() => api.post('/dues/admin/settle', { userId, month: m.month }))}
+                      disabled={Boolean(busy) || m.unpaidDA <= 0}
+                      onClick={() => run('settle', () => api.post('/dues/admin/settle', { userId, month: m.month }))}
                       className="h-9 rounded-xl text-xs font-bold bg-emerald-600 text-white"
                     >
-                      <Check className="h-3.5 w-3.5 me-1" /> {t('duesMarkPaid')}
+                      {busy === 'settle' ? <Hourglass className="h-3.5 w-3.5 animate-spin me-1" /> : <Check className="h-3.5 w-3.5 me-1" />} {t('duesMarkPaid')}
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={busy || m.paidDA <= 0}
-                      onClick={() => run(() => api.post('/dues/admin/unsettle', { userId, month: m.month }))}
+                      disabled={Boolean(busy) || (m.paidDA || 0) <= 0}
+                      onClick={() => run('unsettle', () => api.post('/dues/admin/unsettle', { userId, month: m.month }))}
                       className="h-9 rounded-xl text-xs font-bold text-destructive border-destructive/40"
                     >
-                      <X className="h-3.5 w-3.5 me-1" /> {t('duesUnsettle')}
+                      {busy === 'unsettle' ? <Hourglass className="h-3.5 w-3.5 animate-spin me-1" /> : <X className="h-3.5 w-3.5 me-1" />} {t('duesUnsettle')}
                     </Button>
                   </div>
+
+                  {/* v4.16 — per-task dues state with a one-tap flip */}
+                  {(m.tasks || []).length > 0 && (
+                    <div className="rounded-lg bg-muted/50 p-2 space-y-1.5">
+                      <p className="text-[10px] font-bold text-muted-foreground">{t('duesTaskSection')}</p>
+                      {m.tasks!.map((task) => {
+                        const taskBusy = busy === `task-${task._id}`;
+                        return (
+                          <div key={task._id} className="rounded-lg border bg-card p-2 flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold break-words leading-tight">{task.title}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5" dir="ltr">
+                                {da(task.amountDA)} · {t('duesCommissionShort', { rate: '' })} {da(task.commissionDA)}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => toggleTask(task._id, task.duesState === 'paid' ? 'pending' : 'paid')}
+                              disabled={Boolean(busy)}
+                              aria-label={task.duesState === 'paid' ? t('duesUnsettle') : t('duesMarkPaid')}
+                              title={task.duesState === 'paid' ? t('duesUnsettle') : t('duesMarkPaid')}
+                              className={`h-8 px-2.5 rounded-lg text-[10px] font-bold shrink-0 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50 ${
+                                task.duesState === 'paid'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 hover:bg-destructive/10 hover:text-destructive'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-emerald-600 hover:text-white'
+                              }`}
+                            >
+                              {taskBusy ? (
+                                <Hourglass className="h-3 w-3 animate-spin" />
+                              ) : task.duesState === 'paid' ? (
+                                <><Check className="h-3 w-3" /> {t('duesPaidBadge')}</>
+                              ) : (
+                                <><Hourglass className="h-3 w-3" /> {t('duesPendingBadge')}</>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

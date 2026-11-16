@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Offer } from '../models/offer.model';
 import { MonthlySettlement, commissionRate } from '../models/commission.model';
 import { DuesPaymentProof } from '../models/duesproof.model';
+import { Settings } from '../models/settings.model';
 import { User } from '../models/user.model';
 import { auth, adminOnly, AuthRequest } from '../middleware/auth';
 import { asyncH } from '../middleware/error';
@@ -15,9 +16,61 @@ const router = Router();
 
 const PUB = 'name email phone role tasksDone';
 
-type MonthAgg = { month: string; tasksCount: number; earnedDA: number };
+/**
+ * v4.16 — per-task dues model:
+ *  - the OFFER carries `duesState` ('pending' | 'paid'); confirming a task NEVER
+ *    pays it — only an administration action does (per-task toggle, month settle,
+ *    or an approved payment proof);
+ *  - the MonthlySettlement receipt stays as the month's derived aggregate so the
+ *    receipts history keeps working (amountDA = Σ commissions of paid tasks);
+ *  - `ensureDuesTaskMigration` runs once: pre-v4.16 settlements mark their
+ *    month's tasks paid so historical receipts keep their meaning.
+ */
+let migrated = false;
 
-/** Aggregate DONE offers of one executor into 'YYYY-MM' buckets (single source of truth). */
+async function ensureDuesTaskMigration(): Promise<void> {
+  if (migrated) return;
+  try {
+    const s = await Settings.findOne({ key: 'main' }).select('duesMigrated');
+    if (s && s.get('duesMigrated')) { migrated = true; return; }
+    const settlements = await MonthlySettlement.find({}).lean();
+    for (const st of settlements as any[]) {
+      if (!st?.month || !st?.user) continue;
+      await Offer.updateMany(
+        {
+          acceptedBy: st.user,
+          status: 'done',
+          completedAt: { $gte: new Date(`${st.month}-01T00:00:00.000Z`), $lt: new Date(endOfMonth(st.month)) },
+          duesState: { $ne: 'paid' },
+        },
+        { $set: { duesState: 'paid', duesPaidAt: st.paidAt || new Date(), duesPaidBy: st.decidedBy } }
+      );
+    }
+    await Settings.updateOne({ key: 'main' }, { $set: { duesMigrated: true } });
+    migrated = true;
+    console.log('[dues] v4.16 per-task migration done');
+  } catch (err) {
+    console.error('[dues] migration failed (retried on next request)', err);
+  }
+}
+
+function monthRange(month: string) {
+  return {
+    $gte: new Date(`${month}-01T00:00:00.000Z`),
+    $lt: new Date(endOfMonth(month)),
+  };
+}
+
+type MonthAgg = {
+  month: string;
+  tasksCount: number;
+  earnedDA: number;
+  paidEarnedDA: number;
+  paidTasks: number;
+  lastPaidAt: Date | null;
+};
+
+/** Aggregate DONE offers of one executor into 'YYYY-MM' buckets, split by duesState. */
 async function monthsForUser(userId: unknown): Promise<MonthAgg[]> {
   const rows = await Offer.aggregate([
     { $match: { acceptedBy: new mongoose.Types.ObjectId(String(userId)), status: 'done' } },
@@ -27,15 +80,58 @@ async function monthsForUser(userId: unknown): Promise<MonthAgg[]> {
         _id: { $dateToString: { format: '%Y-%m', date: '$completedAt' } },
         tasksCount: { $sum: 1 },
         earnedDA: { $sum: '$amountDA' },
+        paidEarnedDA: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, '$amountDA', 0] } },
+        paidTasks: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, 1, 0] } },
+        lastPaidAt: { $max: { $cond: [{ $eq: ['$duesState', 'paid'] }, '$duesPaidAt', null] } },
       },
     },
     { $sort: { _id: -1 } },
   ]);
-  return rows.map((r: any) => ({ month: r._id as string, tasksCount: r.tasksCount || 0, earnedDA: r.earnedDA || 0 }));
+  return rows.map((r: any) => ({
+    month: r._id as string,
+    tasksCount: r.tasksCount || 0,
+    earnedDA: r.earnedDA || 0,
+    paidEarnedDA: r.paidEarnedDA || 0,
+    paidTasks: r.paidTasks || 0,
+    lastPaidAt: r.lastPaidAt || null,
+  }));
 }
 
-/** Build the full dues view (months + settlements) for one user at the given rate. */
+/** Keep the month's settlement receipt in sync with the tasks actually marked paid. */
+async function syncMonthReceipt(userId: unknown, month: string, rate: number, decidedBy: unknown): Promise<void> {
+  const rows = await Offer.aggregate([
+    { $match: { acceptedBy: new mongoose.Types.ObjectId(String(userId)), status: 'done', completedAt: monthRange(month) } },
+    { $group: {
+      _id: null,
+      paidEarnedDA: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, '$amountDA', 0] } },
+      paidTasks: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, 1, 0] } },
+    } },
+  ]);
+  const paidDA = Math.round((((rows[0] as any)?.paidEarnedDA || 0) * rate) / 100);
+  const paidTasks = (rows[0] as any)?.paidTasks || 0;
+  if (paidDA <= 0) {
+    await MonthlySettlement.deleteOne({ user: userId, month }).catch(() => {});
+    return;
+  }
+  await MonthlySettlement.findOneAndUpdate(
+    { user: userId, month },
+    {
+      $set: {
+        user: userId,
+        month,
+        amountDA: paidDA,
+        tasksCount: paidTasks,
+        decidedBy: decidedBy || undefined,
+        paidAt: new Date(),
+      },
+    },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+}
+
+/** Build the full dues view (months split by paid tasks + receipts) for one user. */
 async function duesForUser(userId: unknown, rate: number) {
+  await ensureDuesTaskMigration();
   const [months, settlements] = await Promise.all([
     monthsForUser(userId),
     MonthlySettlement.find({ user: userId }).sort({ month: -1 }).lean(),
@@ -43,16 +139,17 @@ async function duesForUser(userId: unknown, rate: number) {
   const paidByMonth = new Map<string, any>(settlements.map((s: any) => [s.month, s]));
   const items = months.map((m) => {
     const commissionDA = Math.round((m.earnedDA * rate) / 100);
+    const paidDA = Math.round((m.paidEarnedDA * rate) / 100);
     const paid = paidByMonth.get(m.month);
-    const paidDA = paid ? paid.amountDA : 0;
     return {
       month: m.month,
       tasksCount: m.tasksCount,
+      paidTasks: m.paidTasks,
       earnedDA: m.earnedDA,
       commissionDA,
       paidDA,
       unpaidDA: Math.max(0, commissionDA - paidDA),
-      paidAt: paid ? paid.paidAt : null,
+      paidAt: (m.lastPaidAt as Date | null) || (paid ? paid.paidAt : null),
       note: paid?.note || '',
     };
   });
@@ -217,6 +314,11 @@ router.post('/admin/proofs/:id/approve', asyncH(async (req: AuthRequest, res) =>
   await proof.save();
 
   // the approved proof IS the settlement receipt — mark the month paid
+  // v4.16: the administration's approval marks every task of that month's dues paid
+  await Offer.updateMany(
+    { acceptedBy: proof.user, status: 'done', completedAt: monthRange(proof.month), duesState: { $ne: 'paid' } },
+    { $set: { duesState: 'paid', duesPaidAt: new Date(), duesPaidBy: req.user!._id } }
+  );
   const settlement = await MonthlySettlement.findOneAndUpdate(
     { user: proof.user, month: proof.month },
     {
@@ -265,15 +367,17 @@ router.post('/admin/proofs/:id/reject', asyncH(async (req: AuthRequest, res) => 
 /** Month picker data + per-user aggregation for the admin dues tab.
  *  `month` = 'YYYY-MM' narrows the rows to that month; '' aggregates everything. */
 router.get('/admin/summary', asyncH(async (req: AuthRequest, res) => {
+  await ensureDuesTaskMigration();
   const settings = await getSettings();
   const rate = commissionRate(settings);
   const month = String(req.query.month || '');
   const monthFilter = /^\d{4}-\d{2}$/.test(month) ? { $eq: month } : null;
 
-  // executors with at least one done offer (optionally narrowed to a month)
+  // executors with at least one done offer (optionally narrowed to a month);
+  // v4.16 — paid/unpaid split comes from each task's duesState, NOT from receipts
   const match: Record<string, unknown> = { status: 'done', completedAt: { $ne: null } };
   if (monthFilter) {
-    match.completedAt = { $gte: new Date(`${month}-01T00:00:00.000Z`), $lt: new Date(endOfMonth(month)) };
+    match.completedAt = monthRange(month);
   }
   const byUser = await Offer.aggregate([
     { $match: match },
@@ -281,20 +385,13 @@ router.get('/admin/summary', asyncH(async (req: AuthRequest, res) => {
       $group: {
         _id: '$acceptedBy',
         tasksCount: { $sum: 1 },
+        paidTasks: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, 1, 0] } },
         earnedDA: { $sum: '$amountDA' },
+        paidEarnedDA: { $sum: { $cond: [{ $eq: ['$duesState', 'paid'] }, '$amountDA', 0] } },
       },
     },
     { $sort: { earnedDA: -1 } },
   ]);
-
-  const settlements = await MonthlySettlement.find(
-    monthFilter ? { month } : {}
-  ).lean();
-  const paidByUserMonth = new Map<string, number>();
-  for (const s of settlements as any[]) {
-    const key = `${s.user}`;
-    paidByUserMonth.set(key, (paidByUserMonth.get(key) || 0) + (s.amountDA || 0));
-  }
 
   const userIds = byUser.map((r: any) => r._id).filter(Boolean);
   const users = await User.find({ _id: { $in: userIds } }).select(PUB).lean();
@@ -303,10 +400,11 @@ router.get('/admin/summary', asyncH(async (req: AuthRequest, res) => {
   const items = byUser.map((r: any) => {
     const u = userById.get(String(r._id));
     const duesDA = Math.round(((r.earnedDA || 0) * rate) / 100);
-    const paidDA = paidByUserMonth.get(String(r._id)) || 0;
+    const paidDA = Math.round(((r.paidEarnedDA || 0) * rate) / 100);
     return {
       user: u ? { _id: u._id, name: u.name, phone: u.phone, email: u.email, role: u.role } : { _id: r._id, name: '—', phone: '', email: '', role: 'seeker' },
       tasksCount: r.tasksCount || 0,
+      paidTasks: r.paidTasks || 0,
       earnedDA: r.earnedDA || 0,
       duesDA,
       paidDA,
@@ -342,17 +440,82 @@ router.get('/admin/summary', asyncH(async (req: AuthRequest, res) => {
   });
 }));
 
-/** Per-month breakdown for ONE user (details dialog in the admin panel). */
+/** Per-month breakdown for ONE user (details dialog in the admin panel),
+ *  v4.16 — includes every done task with its dues state for full control. */
 router.get('/admin/user/:id', asyncH(async (req: AuthRequest, res) => {
+  await ensureDuesTaskMigration();
   const settings = await getSettings();
   const rate = commissionRate(settings);
   const target = await User.findById(req.params.id).select(PUB);
   if (!target) { res.status(404).json({ error: 'User not found', code: 'NOT_FOUND' }); return; }
   const { items, totals } = await duesForUser(target._id, rate);
-  res.json({ rate, user: target, months: items, totals });
+  const tasks = await Offer.find({ acceptedBy: target._id, status: 'done', completedAt: { $ne: null } })
+    .sort({ completedAt: -1 })
+    .select('title amountDA completedAt duesState duesPaidAt')
+    .lean();
+  const byMonth = new Map<string, any[]>();
+  for (const t of tasks as any[]) {
+    const m = new Date(t.completedAt);
+    const key = `${m.getUTCFullYear()}-${String(m.getUTCMonth() + 1).padStart(2, '0')}`;
+    const list = byMonth.get(key) || [];
+    list.push({
+      _id: String(t._id),
+      title: t.title,
+      amountDA: t.amountDA,
+      commissionDA: Math.round(((t.amountDA || 0) * rate) / 100),
+      duesState: t.duesState || 'pending',
+      duesPaidAt: t.duesPaidAt || null,
+      completedAt: t.completedAt,
+    });
+    byMonth.set(key, list);
+  }
+  res.json({
+    rate,
+    user: target,
+    months: items.map((m) => ({ ...m, tasks: byMonth.get(m.month) || [] })),
+    totals,
+  });
 }));
 
-/** Mark a (user, month) pair as PAID — creates/replaces the settlement receipt. */
+/** v4.16 — full administration control over ONE task's dues state:
+ *  flip it between pending (معلقة) and paid (مسددة) freely; the month's
+ *  receipt is kept in sync automatically. */
+router.post('/admin/task/:id/state', asyncH(async (req: AuthRequest, res) => {
+  const body = z.object({ state: z.enum(['pending', 'paid']) }).parse(req.body);
+  const offer = await Offer.findById(req.params.id).select('title acceptedBy status completedAt amountDA duesState');
+  if (!offer) { res.status(404).json({ error: 'Offer not found', code: 'NOT_FOUND' }); return; }
+  if (offer.status !== 'done' || !offer.acceptedBy || !offer.completedAt) {
+    res.status(400).json({ error: 'Dues state applies to completed tasks only', code: 'BAD_STATE' });
+    return;
+  }
+  const settings = await getSettings();
+  const rate = commissionRate(settings);
+  const month = `${offer.completedAt.getUTCFullYear()}-${String(offer.completedAt.getUTCMonth() + 1).padStart(2, '0')}`;
+  offer.duesState = body.state;
+  if (body.state === 'paid') {
+    offer.duesPaidAt = new Date();
+    offer.duesPaidBy = req.user!._id;
+  } else {
+    offer.duesPaidAt = undefined;
+    offer.duesPaidBy = undefined;
+  }
+  await offer.save();
+  await syncMonthReceipt(offer.acceptedBy, month, rate, req.user!._id);
+  if (body.state === 'paid') {
+    notifyUsers([offer.acceptedBy], 'dues_paid', {
+      amountDA: Math.round(((offer.amountDA || 0) * rate) / 100),
+      month,
+      tasksCount: 1,
+      offerId: String(offer._id),
+      offerTitle: offer.title,
+      actorName: 'Slekni',
+    }).catch(() => {});
+  }
+  res.json({ ok: true, duesState: offer.duesState, month });
+}));
+
+/** Mark a (user, month) pair as PAID — creates the settlement receipt AND
+ *  v4.16: marks every task of that month's dues as paid (admin action required). */
 router.post('/admin/settle', asyncH(async (req: AuthRequest, res) => {
   const body = z.object({
     userId: z.string().min(10),
@@ -366,6 +529,11 @@ router.post('/admin/settle', asyncH(async (req: AuthRequest, res) => {
   const m = months.find((x) => x.month === body.month);
   if (!m) { res.status(404).json({ error: 'No completed tasks in this month', code: 'NO_MONTH' }); return; }
   const duesDA = Math.round((m.earnedDA * rate) / 100);
+  // v4.16 — the administration's decision marks the tasks themselves paid
+  await Offer.updateMany(
+    { acceptedBy: body.userId, status: 'done', completedAt: monthRange(body.month), duesState: { $ne: 'paid' } },
+    { $set: { duesState: 'paid', duesPaidAt: new Date(), duesPaidBy: req.user!._id } }
+  );
   const settlement = await MonthlySettlement.findOneAndUpdate(
     { user: body.userId, month: body.month },
     {
@@ -391,7 +559,8 @@ router.post('/admin/settle', asyncH(async (req: AuthRequest, res) => {
   res.status(201).json(settlement);
 }));
 
-/** Reopen a settled month (admin mistake fix) — removes the receipt. */
+/** Reopen a settled month (admin mistake fix) — removes the receipt AND
+ *  v4.16: flips that month's tasks back to pending (fully admin-controlled). */
 router.post('/admin/unsettle', asyncH(async (req: AuthRequest, res) => {
   const body = z.object({
     userId: z.string().min(10),
@@ -399,6 +568,10 @@ router.post('/admin/unsettle', asyncH(async (req: AuthRequest, res) => {
   }).parse(req.body);
   const del = await MonthlySettlement.findOneAndDelete({ user: body.userId, month: body.month });
   if (!del) { res.status(404).json({ error: 'No settlement found', code: 'NOT_FOUND' }); return; }
+  await Offer.updateMany(
+    { acceptedBy: body.userId, status: 'done', completedAt: monthRange(body.month), duesState: 'paid' },
+    { $set: { duesState: 'pending' }, $unset: { duesPaidAt: '', duesPaidBy: '' } }
+  );
   res.json({ ok: true });
 }));
 
